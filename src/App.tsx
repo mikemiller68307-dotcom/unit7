@@ -26,6 +26,7 @@ import {
   EyeOff,
   FileCode2,
   FileUp,
+  Globe,
   KeyRound,
   MessageSquarePlus,
   RotateCcw,
@@ -39,31 +40,57 @@ import { PRESETS, TRUSTED_PUBLIC_KEY_B64, UNRELATED_FILE_SHA256 } from './data/p
 import { ablateManifest, runAuditBrowser } from './lib/auditor';
 import type { AuditReport, ExecutionVerdict, RunManifest, ValueVerdict } from './types';
 
-function claimTypeLabel(ct: string) {
+type Lang = 'en' | 'de';
+
+function claimTypeLabel(ct: string, lang: Lang) {
   switch (ct) {
     case 'explizite_messbehauptung':
-      return 'Explicit Execution Claim';
+      return lang === 'de' ? 'Explizite Messbehauptung' : 'Explicit Execution Claim';
     case 'implizite_empirie':
-      return 'Implicit Empirical Claim';
+      return lang === 'de' ? 'Implizite empirische Behauptung' : 'Implicit Empirical Claim';
     default:
-      return 'Non-Empirical Remark';
+      return lang === 'de' ? 'Keine empirische Behauptung' : 'Non-Empirical Remark';
   }
 }
 
-function verdictBadge(verdict: ExecutionVerdict | ValueVerdict) {
+function verdictBadge(verdict: ExecutionVerdict | ValueVerdict, lang: Lang) {
   switch (verdict) {
     case 'belegt':
-      return <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-600/30">Supported</Badge>;
+      return (
+        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
+          {lang === 'de' ? 'Belegt (Supported)' : 'Supported'}
+        </Badge>
+      );
     case 'widerlegt_extern':
-      return <Badge variant="destructive">Refuted (External Log)</Badge>;
+      return (
+        <Badge variant="destructive">
+          {lang === 'de' ? 'Widerlegt (Messprotokoll)' : 'Refuted (External Log)'}
+        </Badge>
+      );
     case 'widerlegt_intrinsisch':
-      return <Badge variant="destructive">Refuted (Intrinsic Contradiction)</Badge>;
+      return (
+        <Badge variant="destructive">
+          {lang === 'de' ? 'Widerlegt (Selbstwiderspruch)' : 'Refuted (Intrinsic Contradiction)'}
+        </Badge>
+      );
     case 'unbelegt':
-      return <Badge variant="secondary">Unverified (Insufficient Evidence)</Badge>;
+      return (
+        <Badge variant="secondary">
+          {lang === 'de' ? 'Unbelegt (Fehlender Nachweis)' : 'Unverified (Insufficient Evidence)'}
+        </Badge>
+      );
     case 'nicht_entscheidbar':
-      return <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">Undecidable (Conflict)</Badge>;
+      return (
+        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40">
+          {lang === 'de' ? 'Nicht entscheidbar (Konflikt)' : 'Undecidable (Conflict)'}
+        </Badge>
+      );
     case 'keine_messbehauptung':
-      return <Badge variant="outline">No Empirical Claim</Badge>;
+      return (
+        <Badge variant="outline">
+          {lang === 'de' ? 'Keine Messbehauptung' : 'No Empirical Claim'}
+        </Badge>
+      );
     case 'nicht_anwendbar':
       return <Badge variant="outline">N/A</Badge>;
   }
@@ -79,11 +106,8 @@ async function computeFileSha256(file: File): Promise<string> {
 }
 
 export function App() {
+  const [lang, setLang] = useState<Lang>('en');
   const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESETS[0].id);
-  const currentPreset = useMemo(
-    () => PRESETS.find((p) => p.id === selectedPresetId) ?? PRESETS[0],
-    [selectedPresetId]
-  );
 
   const [manifestJson, setManifestJson] = useState<string>(() =>
     JSON.stringify(PRESETS[0].manifest, null, 2)
@@ -103,6 +127,11 @@ export function App() {
 
   const assetInputRef = useRef<HTMLInputElement | null>(null);
   const manifestInputRef = useRef<HTMLInputElement | null>(null);
+
+  const currentPreset = useMemo(
+    () => PRESETS.find((p) => p.id === selectedPresetId) ?? PRESETS[0],
+    [selectedPresetId]
+  );
 
   const loadPreset = (presetId: string) => {
     const p = PRESETS.find((x) => x.id === presetId) ?? PRESETS[0];
@@ -301,70 +330,103 @@ export function App() {
   const copyCanonical = async () => {
     if (!report) return;
     await navigator.clipboard.writeText(report.canonicalPayload);
-    setCopiedMsg('Canonical payload copied');
+    setCopiedMsg(lang === 'de' ? 'Signierte Nutzdaten kopiert' : 'Canonical payload copied');
     setTimeout(() => setCopiedMsg(null), 2000);
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="min-w-0 space-y-1">
+    <div className="min-h-screen text-foreground flex flex-col">
+      <header className="border-b border-border/80 bg-card/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-5 lg:flex-row lg:items-center lg:justify-between sm:px-6">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="font-mono text-[11px]">
-                Mensch maschine projekt · MMP Lab
-              </Badge>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[11px] font-medium text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                UNIT 7 · ONLINE · Mensch maschine projekt
+              </span>
               <Badge variant="secondary" className="font-mono text-[11px]">
-                Zero Server Telemetry · 100% Local Browser Kernel
+                {lang === 'de'
+                  ? 'Null Telemetrie · 100 % lokaler Browser-Kernel'
+                  : 'Zero Server Telemetry · 100% Local Browser Kernel'}
               </Badge>
             </div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              Unit 7 – AI Provenance & Evidence Auditor
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+              <span className="text-emerald-400">UNIT 7</span> ·{' '}
+              {lang === 'de'
+                ? 'Herkunfts- & Belegprüfer für KI-Aussagen'
+                : 'AI Provenance & Evidence Auditor'}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              100% client-side WebCrypto Ed25519 + deterministic rule kernel. Zero LLM calls during audit verification.
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              {lang === 'de'
+                ? '100 % clientseitiges WebCrypto Ed25519 + deterministischer Regel-Kernel. Null KI-Aufrufe (0 LLM calls) im Urteilspfad.'
+                : '100% client-side WebCrypto Ed25519 + deterministic rule kernel. Zero LLM calls during audit verification.'}
             </p>
           </div>
 
           <div className="flex flex-wrap shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLang(lang === 'en' ? 'de' : 'en')}
+              title="Switch language / Sprache wechseln"
+            >
+              <Globe className="w-4 h-4 mr-1.5 text-emerald-400" />
+              {lang === 'en' ? 'EN · Auf Deutsch' : 'DE · Switch to EN'}
+            </Button>
+
             <Button variant="outline" size="sm" onClick={() => loadPreset(selectedPresetId)}>
               <RotateCcw className="w-4 h-4 mr-1.5" />
-              Reset Preset
+              {lang === 'de' ? 'Zurücksetzen' : 'Reset Preset'}
             </Button>
+
             <Button variant="outline" size="sm" onClick={downloadVerificationBundle} disabled={!report}>
               <Download className="w-4 h-4 mr-1.5" />
-              Export Verify Bundle
+              {lang === 'de' ? 'Prüfpaket (.json)' : 'Export Verify Bundle'}
             </Button>
 
             <Dialog open={challengeOpen} onOpenChange={setChallengeOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
                   <MessageSquarePlus className="w-4 h-4 mr-1.5" />
-                  Submit Edge Case to MMP Lab
+                  {lang === 'de' ? 'Grenzfall an MMP melden' : 'Submit Edge Case to MMP Lab'}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
-                  <DialogTitle>Submit Edge Case / Challenge to MMP Lab</DialogTitle>
+                  <DialogTitle>
+                    {lang === 'de'
+                      ? 'Grenzfall / Frage an das MMP-Labor übermitteln'
+                      : 'Submit Edge Case / Challenge to MMP Lab'}
+                  </DialogTitle>
                   <DialogDescription>
-                    Unit 7 transmits zero background telemetry. To report an edge case, counter-example, or press question for hardening by the MMP AI team, describe your case below and export or copy the machine-readable lab packet.
+                    {lang === 'de'
+                      ? 'Unit 7 überträgt keinerlei Hintergrunddaten. Beschreibe hier deinen Testfall, Gegenbeweis oder deine Pressefrage und lade das maschinenlesbare Labor-Paket herunter (oder kopiere es).'
+                      : 'Unit 7 transmits zero background telemetry. To report an edge case, counter-example, or press question for hardening by the MMP AI team, describe your case below and export or copy the machine-readable lab packet.'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
                   <div className="space-y-1.5">
-                    <Label htmlFor="reporter-input">Name / Outlet (optional)</Label>
+                    <Label htmlFor="reporter-input">
+                      {lang === 'de' ? 'Name / Redaktion (optional)' : 'Name / Outlet (optional)'}
+                    </Label>
                     <Input
                       id="reporter-input"
-                      placeholder="e.g., Jane Doe, Tech Desk"
+                      placeholder={lang === 'de' ? 'z. B. Redaktion / Tester' : 'e.g., Jane Doe, Tech Desk'}
                       value={reporterName}
                       onChange={(e) => setReporterName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="challenge-note">What did you test or expect to happen?</Label>
+                    <Label htmlFor="challenge-note">
+                      {lang === 'de' ? 'Was hast du getestet oder beobachtet?' : 'What did you test or expect to happen?'}
+                    </Label>
                     <Textarea
                       id="challenge-note"
-                      placeholder="Describe the edge case, ambiguity, or attack vector you constructed..."
+                      placeholder={
+                        lang === 'de'
+                          ? 'Beschreibe den Grenzfall, Widerspruch oder Angriffsvektor...'
+                          : 'Describe the edge case, ambiguity, or attack vector you constructed...'
+                      }
                       value={challengeNote}
                       onChange={(e) => setChallengeNote(e.target.value)}
                       className="h-28 text-xs"
@@ -374,11 +436,17 @@ export function App() {
                 <DialogFooter className="flex flex-col sm:flex-row gap-2">
                   <Button variant="outline" onClick={copyChallengeBriefing}>
                     <Copy className="w-4 h-4 mr-1.5" />
-                    {challengeCopied ? 'Copied Lab Briefing!' : 'Copy Lab JSON'}
+                    {challengeCopied
+                      ? lang === 'de'
+                        ? 'Labor-Paket kopiert!'
+                        : 'Copied Lab Briefing!'
+                      : lang === 'de'
+                        ? 'Labor-JSON kopieren'
+                        : 'Copy Lab JSON'}
                   </Button>
                   <Button onClick={downloadChallengeBriefing}>
                     <Download className="w-4 h-4 mr-1.5" />
-                    Download Challenge Packet (.json)
+                    {lang === 'de' ? 'Labor-Paket herunterladen (.json)' : 'Download Challenge Packet (.json)'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -388,18 +456,26 @@ export function App() {
       </header>
 
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
-        <Alert>
-          <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>Public Press Sandbox (Simulated Evidence + Local File Hash Verifier)</AlertTitle>
+        <Alert className="bg-card/85 border-emerald-500/25">
+          <ShieldAlert className="h-4 w-4 text-emerald-400" />
+          <AlertTitle>
+            {lang === 'de'
+              ? 'Öffentliche Presse-Sandbox (Simulierte Prüffälle + Lokaler Datei-Hash-Prüfer)'
+              : 'Public Press Sandbox (Simulated Evidence + Local File Hash Verifier)'}
+          </AlertTitle>
           <AlertDescription className="text-xs sm:text-sm">
-            The six built-in stress-test presets use synthetic logs, asset labels, and hashes rather than live MMP lab runs. You can also hash any local file from your own disk in RAM (zero network upload) or load a custom manifest JSON. A valid signature proves process provenance against the supplied log, never a model’s psychological intent. Without a signed record, external evidence falls back to Unverified.
+            {lang === 'de'
+              ? 'Die sechs eingebauten Stresstest-Szenarien nutzen synthetische Referenzprotokolle und Hashes (keine Live-Kameradaten). Du kannst zusätzlich jede beliebige eigene Datei lokal im Arbeitsspeicher hashen (null Datei-Upload) oder eine beliebige KI-Antwort einfügen. Eine gültige Signatur belegt den dokumentierten Werkzeuglauf, niemals eine psychologische „Absicht“. Ohne signiertes Protokoll gilt externe Evidenz zwingend als Unbelegt.'
+              : 'The six built-in stress-test presets use synthetic logs, asset labels, and hashes rather than live MMP lab runs. You can also hash any local file from your own disk in RAM (zero network upload) or load a custom manifest JSON. A valid signature proves process provenance against the supplied log, never a model’s psychological intent. Without a signed record, external evidence falls back to Unverified.'}
           </AlertDescription>
         </Alert>
 
-        <Card>
+        <Card className="bg-card/90">
           <CardContent className="pt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex-1 space-y-1.5">
-              <Label htmlFor="preset-select">Select Stress-Test Scenario</Label>
+              <Label htmlFor="preset-select">
+                {lang === 'de' ? 'Stresstest-Szenario auswählen (6 Presets)' : 'Select Stress-Test Scenario'}
+              </Label>
               <Select value={selectedPresetId} onValueChange={loadPreset}>
                 <SelectTrigger id="preset-select">
                   <SelectValue />
@@ -414,7 +490,7 @@ export function App() {
               </Select>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 border rounded-lg p-3 bg-muted/30">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 border rounded-lg p-3 bg-muted/40">
               <div className="flex items-center gap-3">
                 <Switch
                   id="ablation-switch"
@@ -423,16 +499,20 @@ export function App() {
                 />
                 <div>
                   <Label htmlFor="ablation-switch" className="cursor-pointer font-medium">
-                    Ablation Mode (Chat-Export Only)
+                    {lang === 'de'
+                      ? 'Ablation-Modus (Nur Chat-Kopie ohne Protokoll)'
+                      : 'Ablation Mode (Chat-Export Only)'}
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Strips signed manifest & tool logs while keeping exact answer text
+                    {lang === 'de'
+                      ? 'Entfernt Signatur & Messprotokoll bei identischem Antworttext'
+                      : 'Strips signed manifest & tool logs while keeping exact answer text'}
                   </p>
                 </div>
               </div>
               {report && (
-                <Badge variant="outline" className="font-mono whitespace-nowrap self-start sm:self-center">
-                  <Zap className="w-3 h-3 mr-1" />
+                <Badge variant="outline" className="font-mono whitespace-nowrap border-emerald-500/40 text-emerald-300 self-start sm:self-center">
+                  <Zap className="w-3 h-3 mr-1 text-emerald-400" />
                   {report.durationMs} ms · 0 LLM calls
                 </Badge>
               )}
@@ -440,25 +520,33 @@ export function App() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-card/90 border-emerald-500/25">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
-              Quick Check: Paste Any Plain AI Answer (DE / EN, No Code Needed)
+              {lang === 'de'
+                ? 'Schnelltest: Beliebigen KI-Antworttext einfügen (DE / EN, ohne Code)'
+                : 'Quick Check: Paste Any Plain AI Answer (DE / EN, No Code Needed)'}
             </CardTitle>
             <CardDescription>
-              Paste any copied AI statement (English or German) to see how Unit 7 splits sentences into empirical claims vs. opinions and flags unbacked numbers when no signed tool log is attached.
+              {lang === 'de'
+                ? 'Füge eine beliebige kopierte KI-Antwort ein: Unit 7 trennt Messbehauptungen von Meinungen und markiert unbelegte Zahlenwerte sofort ehrlich als Unbelegt, solange kein signiertes Werkzeugprotokoll vorliegt.'
+                : 'Paste any copied AI statement (English or German) to see how Unit 7 splits sentences into empirical claims vs. opinions and flags unbacked numbers when no signed tool log is attached.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2.5">
             <Textarea
               value={quickPasteText}
               onChange={(e) => setQuickPasteText(e.target.value)}
-              placeholder='Example / Beispiel: "Ich habe das Originalbild mit OpenCV vermessen. Die Auflösung beträgt 4000 x 3000 Pixel und die Entropie liegt bei 7.82 bit. Meiner Meinung nach wirkt das Raster ruhig."'
-              className="text-sm h-20"
+              placeholder={
+                lang === 'de'
+                  ? 'Beispiel: "Ich habe das Originalbild mit OpenCV vermessen. Die Auflösung beträgt 4000 x 3000 Pixel und die Entropie liegt bei 7.82 bit. Meiner Meinung nach wirkt das Raster ruhig."'
+                  : 'Example: "I measured the file with OpenCV. The image resolution is 4000 x 3000 pixels and entropy is 7.82 bits. In my opinion the raster looks calm."'
+              }
+              className="text-sm h-20 bg-background/60"
             />
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={runQuickPlainTextAudit} disabled={!quickPasteText.trim()}>
-                Check Pasted AI Text
+                {lang === 'de' ? 'KI-Text jetzt prüfen' : 'Check Pasted AI Text'}
               </Button>
               <Button
                 variant="outline"
@@ -494,11 +582,11 @@ export function App() {
                   );
                 }}
               >
-                Try 1-Click Example (DE)
+                {lang === 'de' ? '1-Klick-Beispiel testen (DE)' : 'Try 1-Click Example (DE)'}
               </Button>
               {quickPasteText && (
                 <Button variant="ghost" size="sm" onClick={() => loadPreset(selectedPresetId)}>
-                  Back to Signed Preset
+                  {lang === 'de' ? 'Zurück zum signierten Prüffall' : 'Back to Signed Preset'}
                 </Button>
               )}
             </div>
@@ -515,37 +603,45 @@ export function App() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-5 space-y-4">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Journalist Tamper Lab & Local File Hash Check
+                  <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
+                  {lang === 'de'
+                    ? 'Manipulations-Labor & Lokaler Datei-Hash'
+                    : 'Journalist Tamper Lab & Local File Hash Check'}
                 </CardTitle>
                 <CardDescription>
-                  Mutate the signed manifest live or compute a real SHA-256 hash on any local file in browser RAM (no upload).
+                  {lang === 'de'
+                    ? 'Manipuliere das signierte Protokoll live mit einem Klick oder berechne den echten SHA-256-Hash einer eigenen Datei im Browser-RAM (kein Upload).'
+                    : 'Mutate the signed manifest live or compute a real SHA-256 hash on any local file in browser RAM (no upload).'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" onClick={tamperOneBitOutput}>
-                    1. Flip 1 Digit in Tool Log
+                    {lang === 'de' ? '1. 1 Ziffer im Protokoll kippen' : '1. Flip 1 Digit in Tool Log'}
                   </Button>
                   <Button variant="secondary" size="sm" onClick={tamperSwapUnrelatedFile}>
-                    2. Swap Asset File (Hash Mismatch)
+                    {lang === 'de' ? '2. Fremdes Bild unterschieben' : '2. Swap Asset File (Hash Mismatch)'}
                   </Button>
                   <Button variant="secondary" size="sm" onClick={tamperPhantomTool}>
-                    3. Inject Fake Tool Name
+                    {lang === 'de' ? '3. Gefälschtes Tool einschleusen' : '3. Inject Fake Tool Name'}
                   </Button>
                   <Button variant="secondary" size="sm" onClick={tamperFutureTimestamp}>
-                    4. Break Timestamp Order
+                    {lang === 'de' ? '4. Zeitachse brechen' : '4. Break Timestamp Order'}
                   </Button>
                   <Button variant="secondary" size="sm" onClick={tamperPromptPressureAndInjection}>
-                    5. Add Prompt Pressure + Injection
+                    {lang === 'de' ? '5. Nutzerzwang + Injection' : '5. Add Prompt Pressure + Injection'}
                   </Button>
                 </div>
 
-                <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                  <div className="text-xs font-medium">Self-Service Local File Verification (Zero Upload)</div>
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <div className="text-xs font-medium">
+                    {lang === 'de'
+                      ? 'Eigene Datei lokal prüfen (Null Upload ins Netz)'
+                      : 'Self-Service Local File Verification (Zero Upload)'}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <input
                       ref={assetInputRef}
@@ -565,40 +661,44 @@ export function App() {
                       size="sm"
                       onClick={() => assetInputRef.current?.click()}
                     >
-                      <FileUp className="w-3.5 h-3.5 mr-1.5" />
-                      Hash Own Image / File Locally
+                      <FileUp className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+                      {lang === 'de' ? 'Eigenes Bild lokal hashen' : 'Hash Own Image / File Locally'}
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => manifestInputRef.current?.click()}
                     >
-                      <FileCode2 className="w-3.5 h-3.5 mr-1.5" />
-                      Load Manifest JSON
+                      <FileCode2 className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+                      {lang === 'de' ? 'Manifest-JSON laden' : 'Load Manifest JSON'}
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-1.5 pt-1">
                   <Label className="text-xs text-muted-foreground">
-                    Inspected Asset SHA-256 ({inspectedFileName})
+                    {lang === 'de' ? 'Geprüfter Datei-SHA-256' : 'Inspected Asset SHA-256'} ({inspectedFileName})
                   </Label>
-                  <div className="font-mono text-xs p-2 rounded border bg-muted/40 break-all">
+                  <div className="font-mono text-xs p-2 rounded border bg-background/70 break-all">
                     {uploadedHash}
                   </div>
                 </div>
 
                 <Tabs defaultValue="manifest" className="pt-1">
                   <TabsList className="w-full grid grid-cols-2">
-                    <TabsTrigger value="manifest">Editable Manifest JSON</TabsTrigger>
-                    <TabsTrigger value="canonical">Canonical Bytes & Key</TabsTrigger>
+                    <TabsTrigger value="manifest">
+                      {lang === 'de' ? 'Editierbares Manifest-JSON' : 'Editable Manifest JSON'}
+                    </TabsTrigger>
+                    <TabsTrigger value="canonical">
+                      {lang === 'de' ? 'Kanonische Bytes & Schlüssel' : 'Canonical Bytes & Key'}
+                    </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="manifest" className="space-y-2">
                     <Textarea
                       value={manifestJson}
                       onChange={(e) => setManifestJson(e.target.value)}
-                      className="font-mono text-xs h-80"
+                      className="font-mono text-xs h-80 bg-background/70"
                       spellCheck={false}
                     />
                   </TabsContent>
@@ -606,10 +706,10 @@ export function App() {
                   <TabsContent value="canonical" className="space-y-3">
                     <div className="space-y-1">
                       <Label className="text-xs flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5" />
+                        <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
                         Pinned Demo Ed25519 Public Key (Base64)
                       </Label>
-                      <div className="font-mono text-xs p-2 rounded border bg-muted/40 break-all">
+                      <div className="font-mono text-xs p-2 rounded border bg-background/70 break-all">
                         {TRUSTED_PUBLIC_KEY_B64}
                       </div>
                     </div>
@@ -618,18 +718,18 @@ export function App() {
                         <Label className="text-xs">Canonical UTF-8 Payload Signed by Ed25519</Label>
                         <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={copyCanonical} disabled={!report}>
                           <Copy className="w-3 h-3 mr-1" />
-                          {copiedMsg || 'Copy'}
+                          {copiedMsg || (lang === 'de' ? 'Kopieren' : 'Copy')}
                         </Button>
                       </div>
                       <Textarea
                         readOnly
                         value={report?.canonicalPayload || ''}
-                        className="font-mono text-xs h-48"
+                        className="font-mono text-xs h-48 bg-background/70"
                       />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Computed Answer SHA-256 Binding</Label>
-                      <div className="font-mono text-xs p-2 rounded border bg-muted/40 break-all">
+                      <div className="font-mono text-xs p-2 rounded border bg-background/70 break-all">
                         {report?.computedAnswerHash || 'N/A'}
                       </div>
                     </div>
@@ -642,36 +742,49 @@ export function App() {
           <div className="xl:col-span-7 space-y-4">
             {report && (
               <>
-                <Card>
+                <Card className="bg-card/90">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center justify-between gap-2">
                       <span className="flex items-center gap-2">
                         {report.signatureValid && report.loggingCompleteness === 'complete' ? (
-                          <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                          <ShieldCheck className="w-5 h-5 text-emerald-400" />
                         ) : (
                           <ShieldX className="w-5 h-5 text-destructive" />
                         )}
-                        Cryptographic & Lineage Status
+                        {lang === 'de' ? 'Kryptografie- & Herkunftsstatus' : 'Cryptographic & Lineage Status'}
                       </span>
-                      <Badge variant={report.signatureValid ? 'outline' : 'destructive'} className="font-mono">
+                      <Badge
+                        variant={report.signatureValid ? 'outline' : 'destructive'}
+                        className={report.signatureValid ? 'font-mono border-emerald-500/50 text-emerald-300' : 'font-mono'}
+                      >
                         {report.signatureStatus}
                       </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div className="p-2.5 rounded border bg-muted/20 space-y-1">
-                      <div className="text-muted-foreground">Logging Frame</div>
+                    <div className="p-2.5 rounded border bg-muted/30 space-y-1">
+                      <div className="text-muted-foreground">
+                        {lang === 'de' ? 'Protokoll-Rahmen' : 'Logging Frame'}
+                      </div>
                       <div className="font-mono font-semibold">{report.loggingCompleteness}</div>
                     </div>
-                    <div className="p-2.5 rounded border bg-muted/20 space-y-1">
-                      <div className="text-muted-foreground">User Prompt Pressure</div>
+                    <div className="p-2.5 rounded border bg-muted/30 space-y-1">
+                      <div className="text-muted-foreground">
+                        {lang === 'de' ? 'Nutzerdruck (Prompt Pressure)' : 'User Prompt Pressure'}
+                      </div>
                       <div className="font-semibold">
                         {report.promptPressureStatus === 'zwangspraemisse' ? (
-                          <span className="text-amber-600 dark:text-amber-400">Forced Premise Detected</span>
+                          <span className="text-amber-400">
+                            {lang === 'de' ? 'Zwangsprämisse erkannt' : 'Forced Premise Detected'}
+                          </span>
                         ) : report.promptPressureStatus === 'suggestiv_framing' ? (
-                          <span className="text-amber-600 dark:text-amber-400">Suggestive Framing</span>
+                          <span className="text-amber-400">
+                            {lang === 'de' ? 'Suggestives Framing' : 'Suggestive Framing'}
+                          </span>
                         ) : (
-                          <span className="text-emerald-600 dark:text-emerald-400">Neutral / Unremarkable</span>
+                          <span className="text-emerald-400">
+                            {lang === 'de' ? 'Neutral / Unauffällig' : 'Neutral / Unremarkable'}
+                          </span>
                         )}
                       </div>
                       {report.promptPressureHits.length > 0 && (
@@ -680,13 +793,19 @@ export function App() {
                         </div>
                       )}
                     </div>
-                    <div className="p-2.5 rounded border bg-muted/20 space-y-1">
-                      <div className="text-muted-foreground">Security Flags</div>
+                    <div className="p-2.5 rounded border bg-muted/30 space-y-1">
+                      <div className="text-muted-foreground">
+                        {lang === 'de' ? 'Sicherheits-Flags' : 'Security Flags'}
+                      </div>
                       <div className="space-x-1">
                         {report.injectionAttemptDetected ? (
-                          <Badge variant="destructive" className="text-[10px]">Injection Ignored</Badge>
+                          <Badge variant="destructive" className="text-[10px]">
+                            {lang === 'de' ? 'Injection abgewehrt' : 'Injection Ignored'}
+                          </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[10px]">No Injection</Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {lang === 'de' ? 'Keine Injection' : 'No Injection'}
+                          </Badge>
                         )}
                         {report.phantomCitationsDetected && (
                           <Badge variant="destructive" className="text-[10px]">
@@ -698,22 +817,26 @@ export function App() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="bg-card/90">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <FileCode2 className="w-4 h-4" />
-                      Atomic Claim Verdicts ({report.findings.length})
+                      <FileCode2 className="w-4 h-4 text-emerald-400" />
+                      {lang === 'de'
+                        ? `Einzelsatz-Urteile (${report.findings.length})`
+                        : `Atomic Claim Verdicts (${report.findings.length})`}
                     </CardTitle>
                     <CardDescription>
-                      Separated into Execution Provenance, Numerical/Dimension Consistency, and Scope/Channel Validity.
+                      {lang === 'de'
+                        ? 'Getrennt bewertet nach Durchführungsnachweis, Zahlen-/Dimensionsabgleich und Messbereich/Kanal (Scope).'
+                        : 'Separated into Execution Provenance, Numerical/Dimension Consistency, and Scope/Channel Validity.'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {report.findings.map((f) => (
-                      <div key={f.claimId} className="rounded-lg border p-3.5 space-y-2.5 bg-card">
+                      <div key={f.claimId} className="rounded-lg border p-3.5 space-y-2.5 bg-background/60">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-mono text-xs text-muted-foreground">
-                            {f.claimId.toUpperCase()} · {claimTypeLabel(f.claimType)}
+                            {f.claimId.toUpperCase()} · {claimTypeLabel(f.claimType, lang)}
                           </span>
                           {f.unverifiedReasonCode && (
                             <Badge variant="outline" className="font-mono text-[11px]">
@@ -722,53 +845,66 @@ export function App() {
                           )}
                         </div>
 
-                        <blockquote className="border-l-2 pl-3 text-sm font-medium italic">
+                        <blockquote className="border-l-2 border-emerald-500/60 pl-3 text-sm font-medium italic">
                           “{f.quote}”
                         </blockquote>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
-                          <div className="p-2 rounded bg-muted/30 space-y-1">
-                            <div className="text-muted-foreground">1. Execution Claim</div>
-                            <div>{verdictBadge(f.executionVerdict)}</div>
+                          <div className="p-2 rounded bg-muted/40 space-y-1">
+                            <div className="text-muted-foreground">
+                              {lang === 'de' ? '1. Durchführung' : '1. Execution Claim'}
+                            </div>
+                            <div>{verdictBadge(f.executionVerdict, lang)}</div>
                           </div>
-                          <div className="p-2 rounded bg-muted/30 space-y-1">
-                            <div className="text-muted-foreground">2. Value Match</div>
-                            <div>{verdictBadge(f.valueVerdict)}</div>
+                          <div className="p-2 rounded bg-muted/40 space-y-1">
+                            <div className="text-muted-foreground">
+                              {lang === 'de' ? '2. Zahlenwert' : '2. Value Match'}
+                            </div>
+                            <div>{verdictBadge(f.valueVerdict, lang)}</div>
                           </div>
-                          <div className="p-2 rounded bg-muted/30 space-y-1">
-                            <div className="text-muted-foreground">3. Scope / Channel</div>
-                            <div>{verdictBadge(f.scopeVerdict)}</div>
+                          <div className="p-2 rounded bg-muted/40 space-y-1">
+                            <div className="text-muted-foreground">
+                              {lang === 'de' ? '3. Bereich / Kanal' : '3. Scope / Channel'}
+                            </div>
+                            <div>{verdictBadge(f.scopeVerdict, lang)}</div>
                           </div>
                         </div>
 
                         {f.diffDetail && (
-                          <div className="rounded border border-destructive/40 bg-destructive/5 p-2.5 font-mono text-xs space-y-1">
-                            <div className="font-semibold text-destructive">Machine-Readable Diff ({f.diffDetail.field})</div>
+                          <div className="rounded border border-destructive/50 bg-destructive/10 p-2.5 font-mono text-xs space-y-1">
+                            <div className="font-semibold text-red-400">
+                              Machine-Readable Diff ({f.diffDetail.field})
+                            </div>
                             <div>Expected (Signed Asset/Log): {f.diffDetail.expected}</div>
                             <div>Actual (Claimed/Provided):   {f.diffDetail.actual}</div>
                           </div>
                         )}
 
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                          <strong className="text-foreground">Deterministic Reason:</strong> {f.reason}
+                          <strong className="text-foreground">
+                            {lang === 'de' ? 'Deterministische Begründung:' : 'Deterministic Reason:'}
+                          </strong>{' '}
+                          {f.reason}
                         </p>
                       </div>
                     ))}
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="bg-card/90">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <EyeOff className="w-4 h-4 text-muted-foreground" />
-                      Audit Blind Spots (Explicitly Not Checked)
+                      {lang === 'de'
+                        ? 'Bewusste Prüfgrenzen (Was Unit 7 ausdrücklich NICHT misst)'
+                        : 'Audit Blind Spots (Explicitly Not Checked)'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {report.blindSpots.map((b) => (
                       <div key={b.check} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs border-b last:border-b-0 pb-2 last:pb-0">
                         <div className="font-medium flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/70 shrink-0" />
                           {b.check}
                         </div>
                         <div className="flex items-center gap-2">
@@ -785,13 +921,13 @@ export function App() {
         </div>
       </main>
 
-      <footer className="border-t border-border bg-card/60 mt-8">
+      <footer className="border-t border-border/80 bg-card/85 mt-8">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-muted-foreground">
           <div>
-            <strong className="text-foreground">Mensch maschine projekt (MMP)</strong> · Concept & Architecture Lead: Mike Enenkel (Wissembourg, France)
+            <strong className="text-emerald-400">Mensch maschine projekt (MMP)</strong> · Concept & Architecture Lead: Mike Enenkel (Wissembourg, France)
           </div>
           <div className="font-mono">
-            Unit 7 v1.0 · Deterministic Ed25519 Provenance Kernel · All rights reserved (2026)
+            Unit 7 v1.1 · Deterministic Ed25519 Provenance Kernel · 0 LLM Calls · All rights reserved (2026)
           </div>
         </div>
       </footer>
