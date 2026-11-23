@@ -120,6 +120,7 @@ export function App() {
   const [copiedMsg, setCopiedMsg] = useState<string | null>(null);
 
   const [challengeOpen, setChallengeOpen] = useState<boolean>(false);
+  const [legalOpen, setLegalOpen] = useState<boolean>(false);
   const [reporterName, setReporterName] = useState<string>('');
   const [challengeNote, setChallengeNote] = useState<string>('');
   const [challengeCopied, setChallengeCopied] = useState<boolean>(false);
@@ -921,13 +922,87 @@ export function App() {
         </div>
       </main>
 
-      <footer className="border-t border-border/80 bg-card/85 mt-8">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-muted-foreground">
-          <div>
-            <strong className="text-emerald-400">Mensch maschine projekt (MMP)</strong> · Concept & Architecture Lead: Mike Enenkel (Wissembourg, France)
+      <footer className="border-t border-border/80 bg-card/90 mt-8">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 space-y-3 text-xs text-muted-foreground">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div>
+              <strong className="text-emerald-400">Mensch maschine projekt (MMP)</strong> · Concept & Architecture Lead: Mike Enenkel
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-mono">
+                Unit 7 v1.2 · Deterministic Ed25519 Provenance Kernel · 0 LLM Calls · © 2026
+              </span>
+              <Dialog open={legalOpen} onOpenChange={setLegalOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs">
+                    {lang === 'de' ? 'Impressum & Datenschutz' : 'Legal Notice / Impressum & Privacy'}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {lang === 'de'
+                        ? 'Impressum & Datenschutzhinweis (Angaben gemäß § 5 DDG)'
+                        : 'Legal Notice (Impressum) & Zero-Telemetry Privacy Policy'}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {lang === 'de'
+                        ? 'Verantwortlicher Anbieter und Urheber von Unit 7 / Mensch maschine projekt'
+                        : 'Responsible publisher and creator of Unit 7 / Mensch maschine projekt'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 text-xs leading-relaxed">
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                      <div className="font-semibold text-foreground">
+                        Mensch maschine projekt (MMP)
+                      </div>
+                      <div>Mike Enenkel (Mike Coleman)</div>
+                      <div>Hans-Heck-Weg 9a</div>
+                      <div>68307 Mannheim, Germany</div>
+                      <div className="pt-1">
+                        <span className="text-muted-foreground">Website / Domain: </span>
+                        <span className="font-mono text-emerald-400">mensch-maschine-projekt.com</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Press &amp; Contact E-Mail: </span>
+                        <span className="font-mono text-emerald-400">info@mensch-maschine-projekt.com</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-muted-foreground">
+                      <div className="font-semibold text-foreground">
+                        {lang === 'de'
+                          ? 'Inhaltlich Verantwortlicher (§ 18 Abs. 2 MStV):'
+                          : 'Editorial Responsibility (§ 18 Abs. 2 MStV):'}
+                      </div>
+                      <div>Mike Enenkel, Hans-Heck-Weg 9a, 68307 Mannheim, Germany</div>
+                    </div>
+
+                    <div className="space-y-1 text-muted-foreground">
+                      <div className="font-semibold text-foreground">
+                        {lang === 'de'
+                          ? 'Datenschutz (Zero Server Telemetry):'
+                          : 'Privacy Notice (Zero Server Telemetry):'}
+                      </div>
+                      <p>
+                        {lang === 'de'
+                          ? 'Diese Anwendung setzt keine Tracking-Cookies, verwendet keine Analyse-Dienste und lädt keine ausgewählten Prüfdateien oder eingefügten Texte auf einen Anwendungsserver hoch. Alle kryptografischen Prüfungen (Ed25519, SHA-256) erfolgen lokal im Arbeitsspeicher Ihres Browsers. Die statische Auslieferung der Webseite erfolgt über GitHub Pages (GitHub Inc.), wobei technisch bedingte Verbindungsdaten (IP-Adresse) zur Auslieferung verarbeitet werden.'
+                          : 'This application sets zero tracking cookies, runs no analytics scripts, and uploads no inspected files or pasted text to any application server. All cryptographic checks (Ed25519, SHA-256) execute locally in your browser RAM. Static files are served via GitHub Pages (GitHub Inc.), which processes standard HTTP connection metadata (IP address) strictly for delivery.'}
+                      </p>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
-          <div className="font-mono">
-            Unit 7 v1.1 · Deterministic Ed25519 Provenance Kernel · 0 LLM Calls · All rights reserved (2026)
+
+          <div className="border-t border-border/50 pt-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-muted-foreground/90">
+            <div>
+              <strong>Legal Notice / Impressum:</strong> Mensch maschine projekt (MMP) · Mike Enenkel · Hans-Heck-Weg 9a, 68307 Mannheim, Germany
+            </div>
+            <div className="font-mono">
+              Contact: info@mensch-maschine-projekt.com · mensch-maschine-projekt.com
+            </div>
           </div>
         </div>
       </footer>
