@@ -99,6 +99,7 @@ export function App() {
   const [reporterName, setReporterName] = useState<string>('');
   const [challengeNote, setChallengeNote] = useState<string>('');
   const [challengeCopied, setChallengeCopied] = useState<boolean>(false);
+  const [quickPasteText, setQuickPasteText] = useState<string>('');
 
   const assetInputRef = useRef<HTMLInputElement | null>(null);
   const manifestInputRef = useRef<HTMLInputElement | null>(null);
@@ -111,6 +112,32 @@ export function App() {
     setInspectedFileName(p.uploadedFileName);
     setAblationActive(false);
     setParseError(null);
+    setQuickPasteText('');
+  };
+
+  const runQuickPlainTextAudit = () => {
+    const trimmed = quickPasteText.trim();
+    if (!trimmed) return;
+    const nowIso = new Date().toISOString();
+    const unverifiedManifest: RunManifest = {
+      run_id: 'custom_pasted_chat_text',
+      logging_completeness: 'export_only',
+      audit_reference_time: nowIso,
+      user_prompt: {
+        raw_text: '(Plain chat copy pasted without signed tool manifest)',
+        timestamp: nowIso,
+      },
+      inputs_accessible_before_answer: [],
+      tool_calls: [],
+      model_answer: {
+        raw_text: trimmed,
+        generated_at: nowIso,
+      },
+    };
+    setAblationActive(false);
+    setInspectedFileName('none (unverified chat paste)');
+    setUploadedHash('sha256:none_plain_text_paste');
+    setManifestJson(JSON.stringify(unverifiedManifest, null, 2));
   };
 
   useEffect(() => {
@@ -408,6 +435,71 @@ export function App() {
                   <Zap className="w-3 h-3 mr-1" />
                   {report.durationMs} ms · 0 LLM calls
                 </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">
+              Quick Check: Paste Any Plain AI Answer (DE / EN, No Code Needed)
+            </CardTitle>
+            <CardDescription>
+              Paste any copied AI statement (English or German) to see how Unit 7 splits sentences into empirical claims vs. opinions and flags unbacked numbers when no signed tool log is attached.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2.5">
+            <Textarea
+              value={quickPasteText}
+              onChange={(e) => setQuickPasteText(e.target.value)}
+              placeholder='Example / Beispiel: "Ich habe das Originalbild mit OpenCV vermessen. Die Auflösung beträgt 4000 x 3000 Pixel und die Entropie liegt bei 7.82 bit. Meiner Meinung nach wirkt das Raster ruhig."'
+              className="text-sm h-20"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={runQuickPlainTextAudit} disabled={!quickPasteText.trim()}>
+                Check Pasted AI Text
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const demoSample =
+                    'Ich habe das Bild mit OpenCV vermessen. Die Bildauflösung beträgt 4000 x 3000 Pixel und die Frequenz liegt bei 0.125 cycles/px. Ich schätze, der Kontrast wirkt harmonisch.';
+                  setQuickPasteText(demoSample);
+                  const nowIso = new Date().toISOString();
+                  setAblationActive(false);
+                  setInspectedFileName('none (unverified chat paste)');
+                  setUploadedHash('sha256:none_plain_text_paste');
+                  setManifestJson(
+                    JSON.stringify(
+                      {
+                        run_id: 'custom_pasted_chat_text',
+                        logging_completeness: 'export_only',
+                        audit_reference_time: nowIso,
+                        user_prompt: {
+                          raw_text: '(Plain chat copy pasted without signed tool manifest)',
+                          timestamp: nowIso,
+                        },
+                        inputs_accessible_before_answer: [],
+                        tool_calls: [],
+                        model_answer: {
+                          raw_text: demoSample,
+                          generated_at: nowIso,
+                        },
+                      },
+                      null,
+                      2
+                    )
+                  );
+                }}
+              >
+                Try 1-Click Example (DE)
+              </Button>
+              {quickPasteText && (
+                <Button variant="ghost" size="sm" onClick={() => loadPreset(selectedPresetId)}>
+                  Back to Signed Preset
+                </Button>
               )}
             </div>
           </CardContent>

@@ -246,9 +246,10 @@ export function detectClaimType(sentence: string): 'explizite_messbehauptung' | 
   if (explicit.some((re) => re.test(s))) return 'explizite_messbehauptung';
 
   const implicit = [
-    /\b(?:grid\s+period|period|resolution|spacing|width|load)\s+(?:is|equals|measures)\s+(?:\d+|eight|twelve)\b/,
+    /\b(?:grid\s+period|period|resolution|spacing|width|height|load|entropy|entropie|auflösung|rasterperiode|periode|abstand|frequenz|frequency)\s+(?:is|equals|measures|ist|beträgt|liegt\s+bei)\s+(?:\d+|eight|twelve|acht|zwölf)/,
     /\b\d{2,5}\s*[x×]\s*\d{2,5}\b/,
     /\b(?:cycles\/px|cycles\s+per\s+pixel|zyklen\s+pro\s+pixel|peak\s+at|peak\s+bei)\b/,
+    /\b\d+(?:[.,]\d+)?\s*(?:px|pixel|pixels|hz|khz|mhz|ms|db|%|bit|bits|w|kw|mb|gb)\b/,
   ];
   if (hardOverride || implicit.some((re) => re.test(s))) return 'implizite_empirie';
 
