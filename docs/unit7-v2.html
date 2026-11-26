@@ -368,7 +368,7 @@ Grenzen des Verfahrens:
   „Hier ist die Kette. Schau selbst.“<br>
   <b>Keine medizinische oder rechtliche Beratung</b> und kein Gutachten. Ergebnisse sind regelbasierte Indikatoren.<br>
   <a href="#impressum">Impressum</a> · <a href="#datenschutz">Datenschutz</a>
-  <div id="impressum" style="margin-top:8px"><b>Impressum</b><br>Anbieter: Mike, Mannheim (Deutschland).<br>Vollständige Anschrift: [Platzhalter – wird vom Betreiber ergänzt]</div>
+  <div id="impressum" style="margin-top:8px"><b>Impressum</b><br>Anbieter: Mike, Mannheim (Deutschland).<br><span id="impressum-anschrift">Vollständige Anschrift: [Platzhalter – wird vom Betreiber ergänzt]</span></div>
   <div id="datenschutz" style="margin-top:8px"><b>Datenschutz</b><br>Die App verarbeitet alle Eingaben ausschließlich lokal in deinem Browser und sendet nichts an einen Server. Lokal gespeichert werden nur Farbschema und Schlüssel-Registry (LocalStorage). Beim Abruf der Seite verarbeitet der Hoster technisch bedingt Verbindungsdaten (z. B. IP-Adresse). [Platzhalter: vollständige Datenschutzerklärung wird vom Betreiber ergänzt]</div>
 </footer>
 
@@ -650,7 +650,8 @@ const ENGINE = (function () {
     /(melde|berichte|report).{0,30}(verified|pass|bestanden)/i,
     /(setze|set)\s+(den\s+)?(status|score|ergebnis)/i,
     /(deaktiviere|disable).{0,20}(pr(ü|ue)fung|audit|check)/i,
-    /(du bist (jetzt|ab sofort|von nun an) (ein|eine|kein|keine|der|die|das|mein|dein)\b|\bact as\b|verhalte dich (jetzt |ab sofort )?(als|wie)\b)/i,
+    /(du bist (jetzt|ab sofort|von nun an|ab jetzt)\b(?![,.!?]? *(auf|in|im|am|an|bei|beim|sicher|fertig|dran|da|hier|dort|wieder|bereit|nicht|gut|richtig|zu|so|schon|noch|eingeloggt|angemeldet|online|offline|verbunden|zuständig|dabei|herzlich|willkommen|eingeladen|informiert|startklar|erwachsen|alt|alleine|allein)\b)|\bact as\b|\byou are now\b(?! (logged|signed|connected|ready|done|safe|in|on|at|subscribed))|verhalte dich (jetzt |ab sofort )?(als|wie)\b)/i,
+    /\b(wiederhol\w*|zitier\w*|repeat|recite)\b.{0,40}\b(system\s*-?\s*(prompt|anweisung\w*|nachricht)|(deine|ihre|die) (anweisungen|instruktionen|vorgaben|regeln)|your (instructions|rules|prompt)|initial (prompt|instructions))/i,
     /(antworte|antworten sie).{0,25}(immer|stets).{0,25}(verifiziert|verified|bestätigt)/i
   ];
   const FILENAME = /\b[\w.\-]{2,64}\.(png|jpe?g|gif|webp|pdf|txt|csv|json|log|zip|mp4|mov|wav|tiff?|bmp|docx?|xlsx?|html?)\b/gi;
@@ -783,7 +784,11 @@ const ENGINE = (function () {
   /* Varianten eines Textes, die sich nur in Leerzeichen am Ende, Zeilenenden oder Unicode-Form unterscheiden */
   function textVariants(s) {
     const raw = String(s || ""), out = new Set();
-    if (raw.length > 200000) return [];
+    if (raw.length > 200000) {
+      // Runde 4: reduzierte Varianten (Trim, NFC, LF) statt gar keiner – sonst würde jede lange Antwort TAMPERED
+      const lf = raw.replace(/\r\n?/g, "\n"), red = new Set([raw.trim(), raw.normalize("NFC"), lf, lf.trim(), lf.normalize("NFC").replace(/[ \t]+$/gm, "").trim()]);
+      red.delete(raw); return [...red];
+    }
     for (const base of [raw, raw.replace(/[ \t]+$/gm, "").trim()])
       for (const nf of ["NFC", "NFD"])
         for (const eol of ["\n", "\r\n"]) {
@@ -950,9 +955,26 @@ const ENGINE = (function () {
         var A = { status: "VERIFIED", code: "tool_log_present" };
         const ts = D.log.timestamp_utc;
         const tsOk = typeof ts === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/.test(ts) && !isNaN(Date.parse(ts));
-        if (!ts) { A.tsIssue = "fehlt"; findings.A.push({ code: "timestamp_missing", ok: null, text: "Kein Zeitstempel im Manifest – Zeitpunkt der Ausführung unbelegt." }); }
+        if (ts === 0 || ts === "0") { A.tsIssue = "Unix-Epoche 0"; A.tsWarn = true; findings.A.push({ code: "timestamp_epoch", ok: false, text: "Zeitstempel ist 0 (Unix-Epoche) – typischer Platzhalter- oder Fehlerwert. Zeitpunkt unplausibel (WARNUNG)." }); }
+        else if (!ts) { A.tsIssue = "fehlt"; findings.A.push({ code: "timestamp_missing", ok: null, text: "Kein Zeitstempel im Manifest – Zeitpunkt der Ausführung unbelegt." }); }
         else if (!tsOk) { A.tsIssue = "ungültig"; findings.A.push({ code: "timestamp_invalid", ok: null, text: "Zeitstempel „" + String(ts).slice(0, 40) + "“ ist kein UTC-Zeitstempel im Format JJJJ-MM-TTThh:mm:ssZ – Zeitpunkt unbelegt." }); }
-        else if (Date.parse(ts) > Date.now() + 5 * 60 * 1000) { A.tsIssue = "Zukunft"; findings.A.push({ code: "timestamp_future", ok: null, text: "Zeitstempel " + ts + " liegt in der Zukunft – Zeitpunkt unplausibel." }); }
+        else if (Date.parse(ts) > Date.now() + 5 * 60 * 1000) { A.tsIssue = "Zukunft"; A.tsWarn = true; findings.A.push({ code: "timestamp_future", ok: false, text: "Zeitstempel " + ts + " liegt in der Zukunft – Zeitpunkt unplausibel (WARNUNG)." }); }
+        else if (Date.parse(ts) <= 86400000) { A.tsIssue = Date.parse(ts) < 0 ? "vor 1970" : "Unix-Epoche 0"; A.tsWarn = true; findings.A.push({ code: "timestamp_epoch", ok: false, text: "Zeitstempel " + ts + (Date.parse(ts) < 0 ? " liegt vor 1970" : " ist die Unix-Epoche 0 (1970-01-01) – typischer Platzhalter- oder Fehlerwert") + ". Zeitpunkt unplausibel (WARNUNG)." }); }
+        if (tsOk && !A.tsWarn) {
+          const t0 = Date.parse(ts);
+          const created = ["created_utc", "created_at", "created"].map(k => D.log[k]).find(v => typeof v === "string" && !isNaN(Date.parse(v)));
+          if (created && t0 > Date.parse(created) + 5 * 60 * 1000) { A.tsIssue = "nach Erstellung"; A.tsWarn = true; findings.A.push({ code: "timestamp_after_created", ok: false, text: "Ausführungszeitpunkt " + ts + " liegt nach dem Erstellungszeitpunkt " + created + " des Manifests – unplausibel (WARNUNG)." }); }
+          const later = [];
+          (function walk(o, path, depth) {
+            if (!o || typeof o !== "object" || depth > 4) return;
+            for (const [k, v] of Object.entries(o)) {
+              if (typeof v === "string" && /(time|date|zeit|datum|_at$|_utc$|created|modified|timestamp)/i.test(k) && /^\d{4}-\d\d-\d\d([T ]\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:?\d\d)?)?$/.test(v.trim())) {
+                const tv = Date.parse(v.trim()); if (!isNaN(tv) && (tv > t0 + 5 * 60 * 1000 || tv < 0)) later.push(path + k + " = " + v);
+              } else if (v && typeof v === "object") walk(v, path + k + ".", depth + 1);
+            }
+          })(D.log.tool_output, "tool_output.", 0);
+          if (later.length) { A.tsIssue = "Ausgabe-Zeit unplausibel"; A.tsWarn = true; findings.A.push({ code: "output_time_implausible", ok: false, text: "Zeitangaben im Tool-Ergebnis liegen nach dem Ausführungszeitpunkt " + ts + " oder vor 1970: " + later.slice(0, 3).join("; ") + " (WARNUNG)." }); }
+        }
       } else {
         findings.A.push({ code: "log_does_not_cover_claim", ok: false,
           text: "Manifest vorhanden, deckt aber keinen der in der Antwort genannten Messwerte ab (Protokoll-Tool: „" + D.log.tool + "“). Die behauptete Analyse wird vom Protokoll nicht getragen." });
@@ -1082,7 +1104,9 @@ const ENGINE = (function () {
         if (inAnswer && !covered) mirrored.push(pv);
       }
       const directive = countMatches(promptLower, DIRECTIVES).length > 0;
-      const affirm = !/^(nein|no|falsch|inkorrekt|nicht|keineswegs)\b/.test(answerLower) && countMatchesPos(answerLower, AFFIRMATIVES).length > 0;
+      const firstSent = (splitSentences(answer)[0] || answer || "");
+      const truthNeg = /(^|[\s,;:!(„"])(nein|nö|noe|nope|no|keineswegs|mitnichten|leider nicht|leider nein|inkorrekt|unrichtig|unzutreffend|falsch|wrong|incorrect|untrue|false)\b|\bstimmt (so )?(leider )?nicht\b|\btrifft (so )?(leider )?nicht zu\b|\b(ist|wäre|sei) (so )?(leider )?nicht (richtig|korrekt|wahr|zutreffend|haltbar|belegt)\b|\bnicht (richtig|korrekt|wahr|zutreffend)\b|\b(not|isn't|is not|that's not|thats not) (true|correct|right|accurate)\b|\bkann ich nicht bestätigen\b|\bcannot confirm\b|\bcan't confirm\b/i;
+      const affirm = !truthNeg.test(normLower(firstSent)) && !/^(nein|no|falsch|inkorrekt|nicht|keineswegs)\b/.test(answerLower) && countMatchesPos(answerLower, AFFIRMATIVES).length > 0;
       if (mirrored.length) {
         findings.E.push({ code: "unverified_premise_mirroring", ok: false,
           text: "Spiegelung unbelegter Prämissen: Wert(e) " + mirrored.slice(0, 4).join(", ") +
@@ -1155,6 +1179,11 @@ const ENGINE = (function () {
           (near ? near.d.raw + " = " + formatDE(near.product) : "kein Produkt") + "." });
       } else checks.push({ status: "NOT_TESTABLE", text:
         "Pixel-Gesamtangabe (" + t.raw + ") ohne Auflösungsangabe – arithmetisch nicht prüfbar." });
+    }
+    /* Runde 4: allgemeine Rechnungen im Text nachrechnen (Rundungstoleranz: halbe letzte Stelle, bei „ca./≈“ 5 %) */
+    for (const r of cfArith(answer)) {
+      if (r.ok) checks.push({ status: "VERIFIED", text: "Rechnung nachgerechnet und korrekt: " + r.expr + (r.approx ? " (ungefähre Angabe)" : "") });
+      else checks.push({ status: "CONTRADICTED", text: "Rechenfehler: „" + r.expr + "“ – nachgerechnet ergibt sich " + r.computedText + "." });
     }
     return checks;
   }
@@ -1372,7 +1401,11 @@ const ENGINE = (function () {
           extraCertainty.slice(0, 3).join("“, „") + "“.");
         if (!l3.status) l3.status = "ABWEICHUNG";
       }
-      if (rest.trim()) for (const f of cfAuditLayer3(rest, answer)) { l3.findings.push(f); l3.status = "ABWEICHUNG"; }
+      if (rest.trim()) {
+        const l3r = cfAuditLayer3(rest, answer);
+        for (const f of l3r) { l3.findings.push(f); l3.status = "ABWEICHUNG"; }
+        for (const w of (l3r.warnings || [])) { l3.findings.push(w); if (!l3.status) l3.status = "WARNUNG"; }
+      }
       if (!l3.findings.length) l3.status = "ÜBEREINSTIMMEND";
     } else l3.status = "UNVERIFIED";
 
@@ -1428,7 +1461,11 @@ const ENGINE = (function () {
     if (!resp.length)
       resp.push("Keine Abweichung mit eindeutiger Kettenposition. Offene Punkte sind in der Matrix als UNVERIFIED gekennzeichnet.");
 
-    const overall = overallStatus(tech, statements, l3, math);
+    if (l1.tricks && l1.tricks.length)
+      resp.push("Die Vorgabe (Ebene 1) enthält Druck oder einen Trick – deshalb höchstens TEILWEISE_BELEGT. Verantwortlich für diese Formulierung und für die Verwendung des Ergebnisses ist die Person, die die Vorgabe gestellt hat.");
+    if (l3.status === "WARNUNG")
+      resp.push("Weitergabe (Ebene 3) möglicherweise verzerrt, aber nicht eindeutig: bitte Behauptung und KI-Antwort selbst vergleichen.");
+    const overall = overallStatus(tech, statements, l3, math, l1);
     return { tech, statements, math, l1, l2, l3, matrix, resp, overall };
   }
 
@@ -1458,7 +1495,13 @@ const ENGINE = (function () {
       if (!al.includes(kw)) continue;
       for (const s of splitSentences(answer)) {
         const sl = normLower(s);
-        if (sl.includes(kw) && /\b(kein|keine|keiner|nicht|frei von|ohne|unerkannt|unauffällig|intakt|konsistent)\b/.test(sl))
+        if (!sl.includes(kw)) continue;
+        // Runde 4: Verneinung muss sich auf das Schlüsselwort beziehen (höchstens 3 Wörter Abstand), nicht irgendwo im Satz stehen
+        const tk = sl.split(/[^a-zäöüß]+/).filter(Boolean);
+        const at = tk.findIndex(w => w.includes(kw));
+        const near = at >= 0 && tk.slice(Math.max(0, at - 3), at + 4).some(w => /^(kein|keine|keiner|keinen|keinem|nicht|ohne|unerkannt|unauffällig|intakt|konsistent)$/.test(w) || w === "frei");
+        const hedged = /\b(vielleicht|möglicherweise|eventuell|vermutlich|kann nicht ausschließen|nicht auszuschließen|zwar)\b/.test(sl);
+        if (near && !hedged && !/\b(kein|keine|nicht|ohne)\b/.test(cl.split(kw)[0].split(/[.!?]/).pop() || ""))
           return { keyword: kw, sentence: s };
       }
     }
@@ -1479,7 +1522,7 @@ const ENGINE = (function () {
     return "UNVERIFIED";
   }
 
-  function overallStatus(tech, statements, l3, math) {
+  function overallStatus(tech, statements, l3, math, l1) {
     const st = [tech.A.status, tech.B.status, tech.C.status, tech.D.status, tech.E.status];
     if (st.includes("TAMPERED")) return "TAMPERED";
     if (st.includes("UNTRUSTED_KEY")) return "UNTRUSTED_KEY";
@@ -1490,13 +1533,17 @@ const ENGINE = (function () {
     if (l3.status === "ABWEICHUNG") return "CONTRADICTED";
     if (st.includes("INJECTION_TRACE")) return "INJECTION_TRACE";
     if (st.includes("WARNUNG")) return "WARNUNG";
+    if (l3 && l3.status === "WARNUNG") return "WARNUNG";
+    if (tech.A && tech.A.tsWarn) return "WARNUNG";
     if (st.includes("UNVERIFIED")) return "UNVERIFIED";
     if (statements.some(s => s.status === "SYCOPHANCY_INDICATOR")) return "SYCOPHANCY_INDICATOR";
     if (statements.some(s => s.status === "UNSUPPORTED")) return "UNSUPPORTED";
     /* VERIFIED nur, wenn wirklich die ganze Kette belegt ist: Vorgabe signiert gebunden, jede Aussage gemessen, Zeitstempel gültig */
     const full = tech.D.status === "VERIFIED" && tech.D.promptBound && !tech.A.tsIssue &&
       statements.length > 0 && statements.every(s => s.status === "VERIFIED");
-    return full ? "VERIFIED" : "TEILWEISE_BELEGT";
+    /* Runde 4 (B): Trick/Druck in der Vorgabe deckelt das Ergebnis – höchstens TEILWEISE_BELEGT */
+    const trick = !!(l1 && l1.tricks && l1.tricks.length);
+    return full && !trick ? "VERIFIED" : "TEILWEISE_BELEGT";
   }
 
   /* ================= counterfactual lab (v3) =================
@@ -1879,6 +1926,9 @@ const ENGINE = (function () {
     { f: "CERTAINTY", l: "de", g: "QT", re: String.raw`\b(wahr oder falsch|richtig oder falsch|schwarz oder weiss|stimmt oder stimmt nicht|true or false|right or wrong|black or white)\b` },
     { f: "CERTAINTY", l: "de", g: "QT", re: String.raw`\b(mit|in) (nur |bloss )?(einem|1)( (einzigen|einzelnen))? wort\b|\b(nur|bloss|only|just) (ein|1|one) (einziges )?wort\b|\bein wort (als antwort|bitte|reicht)\b|\bein ?wort ?antwort\b|\beinwortantwort\b|\bnichts dazwischen\b|\bkein (vielleicht|jein|eventuell)\b(?! (ist|gibt))|\b(entweder) (ja) (oder) (nein)\b` },
     { f: "CERTAINTY", l: "en", g: "QT", re: String.raw`\b(in|with) (just |only )?(one|a single|1) word\b|\bone ?word (answer|reply|only)\b|\bnothing in between\b|\bno maybes?\b|\beither yes or no\b` },
+    // Runde 4: Antwort-Beschränkung auf ja/nein bzw. yes/no – ohne T-Wächter, weil die Beschränkung selbst der Zwang ist
+    { f: "CERTAINTY", l: "de", re: String.raw`\b(antworte\w*|beantworte\w*|sag\w*|schreib\w*|gib)( \w+){0,3} (nur|ausschliesslich|lediglich|bloss|einfach)( nur)?( mit)?( einem)? (ja|jein)( | oder | bzw | beziehungsweise )nein\b|\b(ja|jein)( | oder | bzw )nein\b[,;: -]*(und )?(sonst )?(nix|nichts)( (anderes|weiter|sonst|mehr|dazwischen))?\b(?! (ist|gibt|davon|zu|uber))|\b(nur|ausschliesslich|lediglich|bloss) (mit )?(ja|jein)( | oder | bzw )nein\b[^.!?]{0,20}\b(antworte\w*|beantworte\w*)\b` },
+    { f: "CERTAINTY", l: "en", re: String.raw`\b(answer|reply|respond|say)( \w+){0,3} (only|just|strictly|solely)( with)?( a)? (yes|no)( or | )(no|yes)\b|\b(yes or no|yes no) only\b|\b(only|just|strictly) (a )?(yes|no) or (no|yes)\b(?! (question|questions))|\byes or no[,;: -]*(and )?nothing else\b` },
     // 3) Rollen-Autorität, generisch: "als (erfahrene) <Rolle> ... weiß ich / bestätige / glaub mir"
     { f: "AUTHORITY", l: "de", re: String.raw`\bals (ein |eine |mein |meine |dein |deine |ihr |ihre )?` + V_ADJ + V_ROLE + String.raw`\b(?! (mochte|will|frage|wurde gern|wurde ich gern|interessiert))[^.!?]{0,80}\b` + V_CONFIRM },
     { f: "AUTHORITY", l: "de", re: String.raw`\b(ich bin|bin|ich war)( (selbst|selber|ja|doch|schliesslich|nun mal|seit \d+ jahren|seit jahren|immerhin))* (ein |eine )?` + V_ADJ + V_ROLE + String.raw`\b[^?]{0,100}\b` + V_CONFIRM },
@@ -2029,7 +2079,7 @@ const ENGINE = (function () {
   /* Ältere Browser (Safari < 16.4) kennen kein Lookbehind: dann ohne Lookbehind weiterarbeiten statt abzustürzen */
   function cfRxSafe(src, flags) { try { return new RegExp(src, flags); } catch (e) { return new RegExp(src.replace(/\(\?<[!=](?:\[[^\]]*\]|\\.|[^()])*\)/g, ""), flags); } }
   const CF_RANGE_RE = cfRxSafe("(?:\\b(?:zwischen|between)\\s+" + CF_NUM + "\\s*(?:und|and)\\s*" + CF_NUM + "|(?<![\\w.,])" + CF_NUM + "\\s*(?:-|–|—|bis(?: zu)?|to)\\s*" + CF_NUM + ")\\s*(" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi");
-  const CF_SINGLE_RE = cfRxSafe("(?<![\\w.,])" + CF_NUM + "\\s*(" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi");
+  const CF_SINGLE_RE = cfRxSafe("(?<![\\w.,/])" + CF_NUM + "\\s*(" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi");
   // Zählwörter vor Zählnomen (ohne "ein/eine", das wäre zu oft Artikel): [Wortstamm (gefaltet), Anzeige]
   const CF_COUNT_ROOTS = [["landung", "Landungen"], ["mission", "Missionen"], ["flug", "Flüge"], ["flüg", "Flüge"], ["person", "Personen"],
     ["mensch", "Menschen"], ["astronaut", "Astronauten"], ["patient", "Patienten"], ["studie", "Studien"], ["studi", "Studien"], ["versuch", "Versuche"],
@@ -2039,7 +2089,7 @@ const ENGINE = (function () {
     ["dose", "Dosen"], ["pill", "Tabletten"], ["tablet", "Tabletten"], ["capsule", "Kapseln"], ["cup", "Tassen"], ["case", "Fälle"], ["trial", "Studien"], ["mission", "Missionen"]];
   const CF_COUNT_STOP = /^(Uhr|Mal|Male|Prozent|Jahre|Jahren|Jahr|Monate|Monaten|Wochen|Woche|Tage|Tagen|Stunden|Minuten|Sekunden|Grad|Euro|Dollar|Punkte|Prozentpunkte|Seiten|Seite|Kapitel|Zeilen|Mai|Juni|Juli|Januar|Februar|März|April|August|September|Oktober|November|Dezember|Stück|Stueck|Fach|Mio|Mrd|Tsd|Millionen|Milliarden|Tausend|Hundert|Dutzend)$/;
   const CF_COUNT_NUM = "(\\d{1,3}(?:\\.\\d{3})+|\\d+(?:,\\d+)?|hundert|tausend|dutzend|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|zwanzig|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty)";
-  const CF_COUNT_RE = cfRxSafe("(?<![\\w.,])(?:(?:genau|exakt|nur|insgesamt|ganze|rund|etwa|ca\\.|exactly|only|just|about|around|some)\\s+)?" + CF_COUNT_NUM +
+  const CF_COUNT_RE = cfRxSafe("(?<![\\w.,/])(?:(?:genau|exakt|nur|insgesamt|ganze|rund|etwa|ca\\.|exactly|only|just|about|around|some)\\s+)?" + CF_COUNT_NUM +
     "\\s+(?:([a-zäöüß-]+(?:e|en|er|es|ed|al|ful))\\s+)?([a-zäöüß-]{3,})", "gi");
   const CF_TIMES_WORDS = { zweimal: 2, dreimal: 3, viermal: 4, "fünfmal": 5, fuenfmal: 5, sechsmal: 6, siebenmal: 7, achtmal: 8, neunmal: 9, zehnmal: 10, twice: 2, thrice: 3 };
   const CF_TIMES_RE = cfRxSafe(String.raw`(?<![\w])(zweimal|dreimal|viermal|fünfmal|fuenfmal|sechsmal|siebenmal|achtmal|neunmal|zehnmal|twice|thrice)(?![\wäöü])|(?<![\w.,])(\d+)\s*-?\s*mal(?![\wäöü])|(?<![\w.,])(two|three|four|five|six|seven|eight|nine|ten)\s+times\b`, "gi");
@@ -2057,6 +2107,12 @@ const ENGINE = (function () {
   function cfDe(n) { return (Math.round(n * 1e6) / 1e6).toString().replace(".", ","); }
   function cfPreNum(t) {
     const W = "(\\d+(?:[.,]\\d+)?|ein|eine|einem|zwei|drei|vier|fünf|fuenf|zehn|one|two|three|a)";
+    // Runde 4: "1 1/2 Stunden" -> 1,5; "3/4 der Fälle" -> 75 %; "1/2 kg" -> 0,5 kg; "innerhalb eines Tages" -> 1 Tag
+    t = t.replace(/(^|[^\d\/.,])(\d+)\s+(\d{1,2})\s*\/\s*(\d{1,2})(?![\d\/])/g, (m, p, a, b, c) => +b < +c && +c > 0 ? p + cfDe(+a + b / c) : m);
+    t = t.replace(/(^|[^\d\/.,])(\d{1,2})\s*\/\s*(\d{1,3})(?=\s+(der|aller|des|von|of|the|all)\b)/gi, (m, p, a, b) => +a < +b && +b > 0 ? p + cfDe(100 * a / b) + " %" : m);
+    t = t.replace(/(^|[^\d\/.,])(\d{1,2})\s*\/\s*(\d{1,2})(?=\s*[A-Za-zÄÖÜäöü])/g, (m, p, a, b) => +a < +b && +b > 0 && +b <= 20 ? p + cfDe(a / b) : m);
+    t = t.replace(/\b(innerhalb|binnen|within|nach|after|in)\s+(eines|einer|eines einzigen|einer einzigen|one|a single|a)\s+(tages|tags|woche|stunde|minute|monats|jahres|day|week|hour|minute|month|year)\b/gi,
+      (m, p, a, u) => p + " 1 " + ({ tages: "Tag", tags: "Tag", monats: "Monat", jahres: "Jahr" }[u.toLowerCase()] || u));
     t = t.replace(/(\d+(?:[.,]\d+)?)\s*[x×·*]\s*10(?:\s*\^\s*([-−]?\d+)|([⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))(?![\d])/g, (m, a, e1, e2) => { const e = e1 != null ? e1 : e2;
       const ex = parseInt(String(e).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/g, c => CF_SUP[c]).replace("−", "-"), 10);
       const v = parseNum(a); return v === null || !Number.isFinite(ex) ? m : cfDe(v * Math.pow(10, ex)); });
@@ -2129,6 +2185,8 @@ const ENGINE = (function () {
       if (a === null || !d) continue;
       // Ein-Buchstaben-Einheiten (h, s, g, l): nur mit Ziffern und nicht beim Buchstabieren ("mit zwei h")
       if (/^[a-z]$/i.test(m[2]) && (!/^\d/.test(m[1]) || CF_SPELL.test(t))) continue;
+      // Runde 4: "5G", "5G-Netz", "4K" sind Namen, keine Einheiten (Großbuchstabe außer L, oder Bindestrich direkt danach)
+      if (/^[a-z]$/i.test(m[2]) && (/^[A-KM-Z]$/.test(m[2]) || /^[-–]\w/.test(t.slice(m.index + m[0].length)))) continue;
       // Zahlwort "ein/eine" nur direkt vor einer Einheit (z. B. "eine Woche"), sonst zu unsicher
       vals.push({ dim: d[1], lo: a * d[2], hi: a * d[2], label: cfFmt(a) + " " + d[3], idx: m.index });
     }
@@ -2142,7 +2200,11 @@ const ENGINE = (function () {
       let e0 = lo.length;
       for (const re of [/[.!?\n;]/g, CF_VAL_CUT]) { re.lastIndex = v.idx + 1; const mm = re.exec(lo); if (mm && mm.index < e0) e0 = mm.index; re.lastIndex = 0; }
       const before = lo.slice(s0 + 1, v.idx), after = lo.slice(v.idx, e0);
-      v.neg = cfTest(CF_VAL_NEG, before) || cfTest(CF_VAL_NEG_AFTER, after);
+      const nb = cfTest(CF_VAL_NEG, before), na = cfTest(CF_VAL_NEG_AFTER, after);
+      // Runde 4: "80 % half es nicht" = "20 % half es" (Verneinung des Prädikats nach dem Anteil, nicht des Werts)
+      if (v.dim === "Anteil" && !nb && na && /^\S+\s*%?\s*(der|aller|von|of|the)?\b.{0,60}\b(nicht|not)\b/.test(after) && !/(falsch|false|incorrect|widerlegt|bestatigen|confirm)/.test(after) && v.hi <= 100) {
+        const lo0 = v.lo, hi0 = v.hi; v.lo = 100 - hi0; v.hi = 100 - lo0; v.label = v.label + " „nicht“ ≙ " + cfFmt(v.lo) + (v.hi !== v.lo ? "–" + cfFmt(v.hi) : "") + " %"; v.complement = true; v.neg = false;
+      } else v.neg = nb || na;
     }
     return vals.sort((a, b) => a.idx - b.idx);
   }
@@ -2208,7 +2270,12 @@ const ENGINE = (function () {
     if (!t) return { code: "UNKLAR", score: null };
     const first = t.replace(/([.!?])\s/, "$1\n").split("\n")[0];
     const firstNo = cfTest(CF_HEAD_NO, first) || cfTest(CF_NO_CUE, first);
-    const firstYes = !firstNo && (cfTest(CF_HEAD_YES, first) || cfTest(CF_YES_CUE, first));
+    // Runde 4: ein Ja-Signal im ersten Satz zählt nicht, wenn es direkt danach verneint wird ("hilft nicht zuverlässig")
+    let firstYesCue = false;
+    { const rx = new RegExp(CF_YES_CUE.source, "g"); let q;
+      while ((q = rx.exec(first)) !== null) { const af = first.slice(q.index + q[0].length, q.index + q[0].length + 30), nb = first.slice(Math.max(0, q.index - 30), q.index).split(/[,;:]/).pop();
+        if (!/^ (\w+ ){0,3}(nicht|kaum|not|hardly|barely)\b/.test(af) && !cfTest(CF_NEG_MARK, nb)) { firstYesCue = true; break; } if (q[0].length === 0) rx.lastIndex++; } }
+    const firstYes = !firstNo && (cfTest(CF_HEAD_YES, first) || firstYesCue);
     const anyNo = cfTest(CF_NO_CUE, t) || cfTest(CF_HEAD_NO, t);
     const qual = cfTest(CF_QUAL, t);
     // "Ja"-Signal außerhalb verneinter Stellen?
@@ -2239,38 +2306,147 @@ const ENGINE = (function () {
 
   /* ---------- Polarität des Kernprädikats ("zugelassen" vs. "nicht zugelassen") ---------- */
   const CF_POL_NEG = new Set(["nicht", "kein", "keine", "keinen", "keinem", "keiner", "keines", "keinerlei", "nie", "niemals", "not", "no", "never", "without", "ohne", "weder", "neither", "nor", "nirgends", "keineswegs", "keinesfalls", "isnt", "arent", "wasnt", "werent", "doesnt", "dont", "didnt", "cannot", "cant", "wont"]);
-  const CF_POL_QUAL = new Set(["immer", "bei", "unbedingt", "nur", "ganz", "vollig", "ausreichend", "eindeutig", "alle", "jeder", "jedem", "jede", "zwingend", "generell", "grundsatzlich", "always", "necessarily", "only", "entirely", "fully", "everyone", "all", "sehr", "so", "viel", "viele", "mehr", "wirklich", "really", "very", "much", "allen", "uberall", "gleich", "besonders", "sonderlich", "zwangslaufig", "automatisch", "sofort", "gross", "grosse", "stark", "starke", "wesentlich", "deutlich", "klar", "sicher", "sicherlich", "every", "quite", "too", "as", "just"]);
+  const CF_POL_QUAL = new Set(["immer", "bei", "unbedingt", "nur", "ganz", "vollig", "ausreichend", "eindeutig", "alle", "jeder", "jedem", "jede", "zwingend", "generell", "grundsatzlich", "always", "necessarily", "only", "entirely", "fully", "everyone", "all", "sehr", "so", "viel", "viele", "mehr", "wirklich", "really", "very", "much", "allen", "uberall", "gleich", "besonders", "sonderlich", "zwangslaufig", "automatisch", "sofort", "gross", "grosse", "stark", "starke", "wesentlich", "deutlich", "klar", "sicher", "sicherlich", "every", "quite", "too", "as", "just", "zuverlassig", "verlasslich", "dauerhaft", "garantiert", "reliably", "consistently", "always", "guaranteed"]);
   const CF_POL_STOP = new Set(["diese", "dieser", "dieses", "einer", "einem", "einen", "eines", "seine", "ihrer", "unsere", "werden", "wurde", "wurden", "worden", "haben", "hatte", "hatten", "konnen", "konnte", "konnten", "sollte", "sollten", "mussen", "musste", "durfen", "durfte", "dass", "damit", "wenn", "falls", "aber", "jedoch", "sondern", "allerdings", "auch", "noch", "schon", "bereits", "etwas", "etwa", "mehr", "weniger", "sowie", "sind", "ist", "war", "waren", "gibt", "gab", "there", "these", "those", "which", "where", "would", "could", "should", "about", "their", "other", "being", "having", "derzeit", "aktuell", "heute", "bisher", "laut", "studien", "studie", "daten", "menschen", "patienten", "fall", "falle", "zeit", "jahr", "jahre", "jahren", "insgesamt", "wirklich", "eigentlich", "genau", "ganz", "sehr", "bitte", "einige", "manche", "vielen", "einfach", "dabei", "davon", "darin", "dafur", "dagegen", "deshalb", "daher", "zwar", "immer", "wieder", "nicht", "kein", "keine", "evidence", "beweise"]);
   function cfStem(w) { let x = w; for (let i = 0; i < 2; i++) { const y = x.replace(/(innen|en|er|es|em|e|n|s)$/, ""); if (y.length >= 4 && y !== x) x = y; else break; } return x; }
+  /* Runde 4: Polarität nur noch für dieselbe Aussage (gleiches Prädikat, gleicher Gegenstand).
+   * - Verneinung bindet an das nächste Prädikatwort (Verb/Adjektiv), nicht an Nomen:
+   *   „nicht für Schwangere geeignet“ verneint „geeignet“, nicht „Schwangere“.
+   * - Großgeschriebene Wörter (deutsche Nomen) und Gruppen nach „für/bei/unter/for/in/among“ gelten als Gegenstand/Gruppe.
+   * - „kaum/wenig/selten“ ist kein Gegenteil, sondern Abstufung -> wird nicht verglichen.
+   * - Einschränkung, „zwar … aber“, Bedingung oder Prämissen-Korrektur -> nur unsicherer Hinweis.
+   * - Unterschiedliche Gruppen/Gegenstände -> kein Widerspruch. */
+  const CF_POL_WEAK = new Set(["kaum", "wenig", "selten", "schwach", "geringfugig", "bedingt", "hardly", "barely", "scarcely", "little", "rarely", "seldom", "marginally"]);
+  const CF_POL_PREP = new Set(["fur", "bei", "unter", "von", "for", "among", "with"]);
+  const CF_POL_ART = new Set(["der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer", "the", "a", "an", "alle", "allen", "jede", "jeden", "jedem"]);
+  const CF_POL_CONCESS = cfRx("\\b(zwar|obwohl|obgleich|wenngleich|although|though|even if)\\b");
+  const CF_POL_PREMISE = cfRx("\\b(gar nicht|gar kein\\w*|anders als|entgegen|die annahme|die pramisse|der pramisse|the premise|contrary to|in wahrheit|tatsachlich (nicht|kein\\w*)|actually (not|no))\\b");
+  const CF_POL_PREPSTOP = new Set(["gegen", "gegenuber", "durch", "wegen", "zwischen", "nach", "uber", "unter", "seit", "trotz", "wahrend", "innerhalb", "ausserhalb", "ausser", "statt", "anstatt", "against", "about", "after", "before", "under", "through", "between", "during", "within", "without", "because", "despite", "toward", "towards",
+    "sind", "wird", "kann", "habe", "sein", "eine", "dies", "noch", "sehr", "mehr", "dass", "wenn", "oder", "denn", "dann", "weil", "wohl", "fast", "sich", "mich", "dich", "ihre", "beim", "euch", "doch", "auch", "this", "that", "with", "from", "have", "will", "they", "them", "then", "than", "been", "were", "what", "when", "your", "into", "also", "more", "some", "such", "only", "most", "very", "just", "over", "does", "here", "there", "it's", "much", "many", "each", "even", "well", "were", "less", "take".slice(0, 0)]);
+  const CF_POL_COND = cfRx("\\b(wenn|falls|sofern|solange|if|unless|as long as)\\b");
+  function cfPolTokens(text) {
+    const N = cfNormalize(text), norm = N.norm, src = N.src;
+    const toks = [], re = /[a-z0-9]+/g; let m;
+    while ((m = re.exec(norm)) !== null) {
+      const o = N.map[m.index]; const ch = o != null ? src[o] : "";
+      let k = (o == null ? 0 : o) - 1; while (k >= 0 && /[\s"„“”'‚‘’»«(\-–—]/.test(src[k])) k--;
+      const sentStart = k < 0 || /[.!?:\n]/.test(src[k]);
+      toks.push({ w: m[0], i: m.index, cap: /[A-ZÄÖÜ]/.test(ch), sentStart });
+    }
+    const lowerSeen = new Set(toks.filter(t => !t.cap).map(t => cfStem(t.w)));
+    for (const t of toks) t.noun = t.cap && (!t.sentStart || !lowerSeen.has(cfStem(t.w)));
+    return { norm, toks };
+  }
   function cfPolarity(text) {
-    const pol = new Map();
-    const norm = cfNormalize(text).norm;
-    for (const cl of norm.split(/[.;!?,:\n]|\b(?:aber|jedoch|sondern|allerdings|but|however|whereas|while|wahrend)\b/)) {
-      const toks = cl.split(/[^a-z0-9]+/).filter(Boolean);
-      for (let i = 0; i < toks.length; i++) {
-        let w = toks[i];
-        if (w.length < 5 || CF_POL_NEG.has(w) || CF_POL_STOP.has(w) || /^\d/.test(w)) continue;
-        let neg = false;
-        const qual = k => CF_POL_QUAL.has(toks[k] || "") && (toks[k] !== "bei" || /^(jedem|jeder|allen|allem|manchen|einigen|jedermann)$/.test(toks[k + 1] || ""));
-        for (let j = Math.max(0, i - 3); j < i; j++) if (CF_POL_NEG.has(toks[j]) && !qual(j + 1)) neg = !neg;
-        // nachgestelltes "nicht" ("wirkt nicht") nur, wenn danach kein weiteres Inhaltswort kommt ("in Deutschland nicht zugelassen" -> gehört zu "zugelassen")
-        const nx = toks[i + 2] || "";
-        if (/^(nicht|not|nie|never)$/.test(toks[i + 1] || "") && !qual(i + 2) && (nx.length < 5 || CF_POL_STOP.has(nx))) { neg = !neg; var cfPost = true; } else cfPost = false;
-        if (/^un[a-z]{5,}/.test(w) && !/^(unter|uber|unser|unbe$|univers|unix|uniform|union)/.test(w)) { w = w.slice(2); neg = !neg; }
+    const { norm, toks } = cfPolTokens(text);
+    const occ = [];           // {stem, word, neg, weak, clause}
+    const clauses = [];
+    const cutRe = /[.;!?,:\n]|\b(?:aber|jedoch|sondern|allerdings|but|however|whereas|while|wahrend)\b/g;
+    const cuts = []; let mm; while ((mm = cutRe.exec(norm)) !== null) cuts.push(mm.index);
+    let ci = 0, cur = null;
+    const clauseOf = i => { let c = 0; for (const x of cuts) if (x < i) c++; return c; };
+    const sentCuts = []; { const sr = /[.!?\n]/g; let q; while ((q = sr.exec(norm)) !== null) sentCuts.push(q.index); }
+    const sentCache = new Map();
+    const sentOf = i => { let a0 = 0, b0 = norm.length; for (const x of sentCuts) { if (x < i) a0 = x + 1; else { b0 = x; break; } }
+      const key = a0; if (sentCache.has(key)) return sentCache.get(key);
+      const st = toks.filter(t => t.i >= a0 && t.i < b0);
+      const sg = new Set(), ss = new Set();
+      st.forEach((t, j) => { if (t.w.length < 4 || CF_POL_STOP.has(t.w) || CF_POL_PREPSTOP.has(t.w) || CF_POL_NEG.has(t.w) || /^(ja|yes|nein|leider|genau|richtig|stimmt|klar|sicher|okay)$/.test(t.w)) return;
+        const pv = (st[j - 1] || {}).w || "", pv2 = (st[j - 2] || {}).w || "";
+        if (CF_POL_PREP.has(pv) || (CF_POL_ART.has(pv) && CF_POL_PREP.has(pv2))) sg.add(cfStem(t.w)); else if (t.noun && !/^kein/.test(pv)) ss.add(cfStem(t.w)); });
+      const r = { key, text: norm.slice(a0, b0), groups: sg, subjects: ss }; sentCache.set(key, r); return r; };
+    const byClause = new Map();
+    toks.forEach((t, k) => { const c = clauseOf(t.i); if (!byClause.has(c)) byClause.set(c, []); byClause.get(c).push(k); });
+    for (const [c, idxs] of byClause) {
+      const T = idxs.map(k => toks[k]);
+      const text0 = T.map(t => t.w).join(" ");
+      const content = t => t.w.length >= 4 && !CF_POL_NEG.has(t.w) && !CF_POL_STOP.has(t.w) && !CF_POL_PREPSTOP.has(t.w) && !CF_POL_WEAK.has(t.w) && !CF_POL_QUAL.has(t.w) && !CF_POL_PREP.has(t.w) && !CF_POL_ART.has(t.w) && !/^\d/.test(t.w);
+      // Gruppe: bis zu zwei Inhaltswörter direkt nach "für/bei/unter/for/among" (Artikel übersprungen)
+      const inGroup = new Array(T.length).fill(false);
+      T.forEach((t, j) => { if (!CF_POL_PREP.has(t.w)) return; let k = j + 1; if (T[k] && CF_POL_ART.has(T[k].w)) k++;
+        if (!(T[k] && content(T[k]) && !CF_POL_NEG.has(T[k].w))) return;
+        inGroup[k] = true;
+        // zweites Wort nur bei Adjektiv + Nomen ("schwangere Frauen") oder im Englischen ohne Großschreibung ("pregnant women")
+        const nx = T[k + 1], english = !T.some(x => x.noun);
+        if (!T[k].noun && nx && content(nx) && !CF_POL_NEG.has(nx.w) && (nx.noun || english) && !(english && k + 2 < T.length && T[k + 2] && CF_POL_ART.has(T[k + 2].w))) inGroup[k + 1] = true; });
+      const pred = t => content(t) && !t.noun && !inGroup[T.indexOf(t)];
+      const negOf = new Array(T.length).fill(0), weakOf = new Array(T.length).fill(false), nounNeg = new Array(T.length).fill(false);
+      let qualified = false;
+      T.forEach((t, j) => {
+        const isNeg = CF_POL_NEG.has(t.w), isWeak = CF_POL_WEAK.has(t.w);
+        if (!isNeg && !isWeak) return;
+        // "nicht immer", "nicht unbedingt", "nicht bei allen" -> Einschränkung, keine Verneinung
+        if (isNeg && T[j + 1] && CF_POL_QUAL.has(T[j + 1].w) && (T[j + 1].w !== "bei" || /^(jedem|jeder|allen|allem|manchen|einigen)$/.test((T[j + 2] || {}).w || ""))) { qualified = true; return; }
+        let tgt = -1;
+        // "kein/keine X": verneint das Nomen direkt danach (ggf. nach Adjektiv)
+        if (/^kein/.test(t.w) || t.w === "no") for (let k = j + 1; k <= Math.min(T.length - 1, j + 2); k++) if (content(T[k])) { tgt = k; if (T[k].noun) nounNeg[k] = true; break; }
+        // "keine Belege, dass …" / "no evidence that …": die Verneinung gehört zum Nomen, nicht zum Verb dahinter
+        if (tgt < 0 && (/^kein/.test(t.w) || t.w === "no") && T[j + 1]) return;
+        if (tgt < 0) for (let k = j + 1; k <= Math.min(T.length - 1, j + 4); k++) { if (pred(T[k])) { tgt = k; break; } }
+        if (tgt < 0) for (let k = j - 1; k >= Math.max(0, j - 3); k--) { if (pred(T[k])) { tgt = k; break; } }
+        if (tgt < 0) return;
+        if (isWeak) weakOf[tgt] = true; else negOf[tgt]++;
+      });
+      const groups = new Set(), subjects = new Set();
+      T.forEach((t, j) => {
+        if (!content(t) || nounNeg[j]) return;
+        if (inGroup[j]) groups.add(cfStem(t.w));
+        else if (t.noun) subjects.add(cfStem(t.w));
+      });
+      // Einschränkungen gelten für den ganzen Satz ("…, wenn man Kinder hat"), nicht nur den Teilsatz
+      const sent = sentOf(T[0].i);
+      const info = { text: text0, groups, subjects, qualified, sentKey: sent.key, sentGroups: sent.groups, sentSubjects: sent.subjects,
+        hedge: cfTest(CF_HEDGE, sent.text), concess: cfTest(CF_POL_CONCESS, sent.text), premise: cfTest(CF_POL_PREMISE, sent.text), cond: cfTest(CF_POL_COND, sent.text) };
+      clauses.push(info);
+      T.forEach((t, j) => {
+        const nounOcc = t.noun && content(t) && !nounNeg[j] && !inGroup[j];
+        if (!(pred(t) || nounNeg[j] || nounOcc)) return;
+        if (nounOcc) { occ.push({ stem: cfStem(t.w), word: t.w, neg: false, weak: false, noun: true, clause: info, nword: "" }); return; }
+        let w = t.w, neg = negOf[j] % 2 === 1;
+        if (/^un[a-z]{5,}/.test(w) && !/^(unter|uber|unser|univers|unix|uniform|union|ungefahr)/.test(w)) { w = w.slice(2); neg = !neg; }
         const st = cfStem(w);
-        const o = pol.get(st) || { pos: 0, neg: 0, word: toks[i], nword: "" };
-        if (neg) { o.neg++; if (!o.nword) o.nword = cfPost ? toks[i] + " " + toks[i + 1] : toks.slice(Math.max(0, i - 2), i + 1).join(" "); } else o.pos++;
-        pol.set(st, o);
-      }
+        info.subjects.delete(st); info.groups.delete(st);
+        const back = T.slice(Math.max(0, j - 2), j + 1).map(x => x.w).join(" "), fwd = T.slice(j, j + 2).map(x => x.w).join(" ");
+        occ.push({ stem: st, word: t.w, neg, weak: weakOf[j], noun: !!nounNeg[j], clause: info, nword: CF_POL_NEG.has((T[j + 1] || {}).w || "") ? fwd : back });
+      });
+    }
+    // Kompatibel: Map stem -> {pos, neg, word, nword, occ}
+    const pol = new Map();
+    for (const o of occ) {
+      const x = pol.get(o.stem) || { pos: 0, neg: 0, weak: 0, word: o.word, nword: "", occ: [] };
+      if (o.weak) x.weak++; else if (o.neg) { x.neg++; if (!x.nword) x.nword = o.nword; } else x.pos++;
+      x.occ.push(o); pol.set(o.stem, x);
     }
     return pol;
   }
-  function cfPolConflicts(textA, textB) {
+  /* Bewertung eines Paars: "clear" (gleiche Aussage, gegensätzlich), "unsure" (Hinweis), null (kein Widerspruch) */
+  function cfPolSeverity(ca, cb, stem) {
+    const dis = (x, y) => x.size && y.size && ![...x].some(v => y.has(v));
+    const diff = (x, y) => [...x].some(v => !y.has(v)) || [...y].some(v => !x.has(v));
+    const G = c => new Set([...c.groups, ...c.sentGroups].filter(x => x !== stem)), S = c => new Set([...c.subjects, ...c.sentSubjects].filter(x => x !== stem));
+    if (dis(G(ca), G(cb)) || dis(S(ca), S(cb))) return null;   // andere Gruppe / anderer Gegenstand
+    if (ca.hedge || cb.hedge || ca.concess || cb.concess || ca.premise || cb.premise || ca.cond || cb.cond || ca.qualified || cb.qualified) return "unsure";
+    if (diff(G(ca), G(cb)) || diff(S(ca), S(cb))) return "unsure";
+    return "clear";
+  }
+  function cfPolConflicts(textA, textB, opts) {
     const A = cfPolarity(textA), B = cfPolarity(textB), out = [];
     for (const [st, a] of A) {
       const b = B.get(st); if (!b) continue;
-      if (a.pos && !a.neg && b.neg && !b.pos) out.push({ stem: st, pos: a.word, neg: b.nword, posIn: "A" });
-      else if (b.pos && !b.neg && a.neg && !a.pos) out.push({ stem: st, pos: b.word, neg: a.nword, posIn: "B" });
+      if (a.weak || b.weak) continue;                         // "hilft kaum" ist kein Gegenteil von "hilft"
+      let posIn = null;
+      if (a.pos && !a.neg && b.neg && !b.pos) posIn = "A";
+      else if (b.pos && !b.neg && a.neg && !a.pos) posIn = "B";
+      if (!posIn) continue;
+      const P = posIn === "A" ? a : b, Q = posIn === "A" ? b : a;
+      const po = P.occ.find(o => !o.neg), qo = Q.occ.find(o => o.neg);
+      // ein Nomen ist nur gegen "kein <Nomen>" gegensätzlich, nicht gegen ein verneintes Prädikat im selben Satz
+      if (P.occ.every(o => o.noun) && !Q.occ.some(o => o.neg && o.noun)) continue;
+      const cp = po.clause, cq = qo.clause;
+      let sev = cfPolSeverity(cp, cq, st);
+      if (!sev) continue;
+      if (opts && opts.sameStance && sev === "clear") sev = "unsure";
+      out.push({ stem: st, pos: P.word, neg: Q.nword, posIn, severity: sev });
     }
     return out;
   }
@@ -2330,9 +2506,16 @@ const ENGINE = (function () {
     // 3) Haltung vergleichen
     const withStance = V.filter(v => v.stanceScore !== null);
     const pos = withStance.filter(v => v.stanceScore > 0), neg = withStance.filter(v => v.stanceScore < 0);
+    // Runde 4: "Nein" als Korrektur der Prämisse ("nicht X, sondern Y") oder "zwar nicht …, aber …" ist kein Gegenteil
+    const CF_CORR = cfRx("\\b(sondern|vielmehr|stattdessen|rather|instead|in wahrheit|tatsachlich|eigentlich)\\b");
+    const softNeg = v => { const t = cfNormalize(v.answer).norm; return cfTest(CF_POL_PREMISE, t) || cfTest(CF_CORR, t) || (v.stance === "NEIN_ABER" && cfTest(CF_POL_CONCESS, t)); };
     if (pos.length && neg.length) {
-      const maxGap = Math.max(...pos.map(p => Math.max(...neg.map(n => p.stanceScore - n.stanceScore))));
-      if (maxGap >= 3) {
+      const hard = neg.filter(n => !softNeg(n));
+      const maxGap = hard.length ? Math.max(...pos.map(p => Math.max(...hard.map(n => p.stanceScore - n.stanceScore)))) : 0;
+      if (!hard.length) {
+        results.findings.push({ level: "HINWEIS", text: "Haltung unterscheidet sich nur scheinbar: " + neg.map(n => n.id).join("/") +
+          " sagt „nein“ als Korrektur der Prämisse oder mit „zwar nicht …, aber …“. Das ist kein Widerspruch – bitte Inhalt vergleichen." });
+      } else if (maxGap >= 3) {
         inconsistent = true;
         results.findings.push({ level: "INCONSISTENT", text: "Gegensätzliche Haltung zwischen Varianten: " +
           V.map(v => v.id + " → " + CF_STANCE_LABEL[v.stance]).join("  ·  ") + ". Dieselbe Sachfrage wird je nach Vorgabe bejaht und verneint." });
@@ -2357,12 +2540,16 @@ const ENGINE = (function () {
         const o = onlySome.get(h.id); h.valObjs.filter(x => x.dim === d).forEach(x => o.vals.includes(x.label) || o.vals.push(x.label)); lacks.forEach(l => o.lacking.add(l.id)); }
     }
     // Polarität: gleiche Aussage einmal bejaht, einmal verneint (ohne Zahlen)
-    const polHits = [];
+    const polHits = [], polSoft = [];
+    // Komplement-Anteile ("80 % half nicht" ≙ "20 % half"): die Verneinung ist im Wert schon verrechnet
+    const complOk = (x, y) => x.valObjs.some(a => a.complement && y.valObjs.some(b => b.dim === a.dim && !b.complement && cfOverlap(a, b)));
     for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++)
-      for (const c of cfPolConflicts(V[i].answer, V[j].answer)) {
+      if (!complOk(V[i], V[j]) && !complOk(V[j], V[i])) for (const c of cfPolConflicts(V[i].answer, V[j].answer, { sameStance: V[i].stanceScore !== null && V[j].stanceScore !== null && Math.sign(V[i].stanceScore) === Math.sign(V[j].stanceScore) })) {
         const pv = c.posIn === "A" ? V[i] : V[j], nv = c.posIn === "A" ? V[j] : V[i];
-        polHits.push(pv.id + " → „" + c.pos + "“ vs. " + nv.id + " → „" + c.neg + "“");
+        (c.severity === "clear" ? polHits : polSoft).push(pv.id + " → „" + c.pos + "“ vs. " + nv.id + " → „" + c.neg + "“");
       }
+    if (polSoft.length) results.findings.push({ level: "HINWEIS", text: "Möglicherweise gegensätzliche Aussage, aber unsicher (Einschränkung, Bedingung, andere Gruppe oder gleiche Haltung): " +
+      polSoft.slice(0, 4).join("  ·  ") + ". Kein Widerspruch festgestellt – bitte selbst vergleichen." });
     if (polHits.length) {
       inconsistent = true;
       results.findings.push({ level: "INCONSISTENT", text: "Gegensätzliche Kernaussage (Verneinung): " + polHits.slice(0, 4).join("  ·  ") + ". Dieselbe Aussage wird in einer Variante bejaht und in einer anderen verneint." });
@@ -2460,15 +2647,93 @@ const ENGINE = (function () {
     if (cc.length && !ac.length)
       f.push("Gewissheitsniveau verschoben: Die Behauptung sagt „" + cc.slice(0, 3).join("“, „") + "“, die KI-Antwort " +
         (am.hedges.length ? "formuliert vorsichtig („" + am.hedges.slice(0, 3).join("“, „") + "“)" : "enthält keine solche Gewissheit") + ".");
-    for (const c of cfPolConflicts(claim, answer).slice(0, 3))
-      f.push("Polarität umgedreht: " + (c.posIn === "A" ? "Die Behauptung bejaht „" + c.pos + "“, die KI-Antwort sagt „" + c.neg + "“."
-        : "Die Behauptung verneint („" + c.neg + "“), die KI-Antwort bejaht „" + c.pos + "“."));
+    // Runde 4: nur ein klarer Widerspruch derselben Aussage ist eine Abweichung; unsichere Fälle sind eine Warnung
+    f.warnings = [];
+    for (const c of cfPolConflicts(claim, answer).slice(0, 3)) {
+      const txt = (c.posIn === "A" ? "Die Behauptung bejaht „" + c.pos + "“, die KI-Antwort sagt „" + c.neg + "“."
+        : "Die Behauptung verneint („" + c.neg + "“), die KI-Antwort bejaht „" + c.pos + "“.");
+      if (c.severity === "clear") f.push("Polarität umgedreht: " + txt);
+      else f.warnings.push("Möglicherweise umgedrehte Polarität (unsicher – Einschränkung, Bedingung oder andere Gruppe): " + txt + " Bitte selbst prüfen.");
+    }
+    for (const r of cfArith(claim).filter(r => !r.ok))
+      f.push("Rechenfehler in der Behauptung: " + r.expr + " – nachgerechnet " + r.computedText + ".");
     return f;
+  }
+
+  /* ---------- Runde 4: generischer Rechen-Prüfer ("100 − 25 = 80", "15 von 40 = 50 %") ---------- */
+  function cfArithNum(s) {
+    const t = String(s).replace(/[\u2212\u2013]/g, "-");
+    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) return { v: +t.replace(/\./g, "").replace(",", "."), dec: (t.split(",")[1] || "").length };
+    if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) return { v: +t.replace(/,/g, ""), dec: (t.split(".")[1] || "").length };
+    if (/^\d+,\d+$/.test(t)) return { v: +t.replace(",", "."), dec: t.split(",")[1].length };
+    if (/^\d+(\.\d+)?$/.test(t)) return { v: +t, dec: (t.split(".")[1] || "").length };
+    return null;
+  }
+  function cfArithFmt(v) { return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 4 }).format(v); }
+  function cfArith(text) {
+    const src = String(text || "").normalize("NFKC").replace(/[\u2212\u2013\u2014]/g, "-");
+    const out = [];
+    const N = String.raw`\d+(?:[.,]\d+)*`;
+    const APPROX = /^(≈|~|ca\.?|circa|etwa|rund|ungefähr|about|approx\.?|approximately|roughly)$/i;
+    const trunc = (c, st) => { const f = Math.pow(10, st.dec); return Math.abs(Math.trunc(c * f + 1e-9 * Math.sign(c)) / f - st.v) < 1e-9; };
+    const tol = (stated, approx, pct) => approx ? Math.max(Math.abs(stated.v) * 0.05, 0.5) : 0.5 * Math.pow(10, -stated.dec) + 1e-9;
+    // 1) Rechenausdruck mit Ergebnis
+    const ops = new RegExp(String.raw`(?<![\d.,\w/:-])(` + N + String.raw`(?:\s*[+\-*×x·÷:/]\s*` + N + String.raw`)+)\s*(=|≈|(?:ergibt|ergeben|macht|sind|gleich|equals|is|are)\b)\s*(≈|~|ca\.?|circa|etwa|rund|ungefähr|about|approx\.?|roughly)?\s*(-?` + N + String.raw`)(?![\d.,]*\d)\s*(%|prozent|percent)?`, "gi");
+    let m;
+    while ((m = ops.exec(src)) !== null) {
+      const expr = m[1], eq = m[2], approx = !!m[3] || eq === "≈", after = src.slice(m.index + m[0].length, m.index + m[0].length + 14);
+      const parts = expr.split(/\s*([+\-*×x·÷:/])\s*/);
+      const opsUsed = parts.filter((_, i) => i % 2 === 1);
+      if (/^\s*(pixel|px|punkte|bildpunkte|dpi|mm|cm|zoll)/i.test(after) && opsUsed.every(o => /[x×*·]/i.test(o))) continue;   // Auflösung: prüft mathChecks
+      if (opsUsed.some(o => o === ":") && !/\s:\s/.test(expr)) continue;             // 16:9, 10:30 – Verhältnis/Uhrzeit
+      if (opsUsed.some(o => o === "/") && eq !== "=" && eq !== "≈") continue;          // 3/4 der Fälle
+      if (!/^[=≈]$/.test(eq) && opsUsed.some(o => o === "-") && !/\s-\s/.test(expr)) continue; // 10-20 sind … (Spanne)
+      if (/[-]/.test(expr) && /^\d{4}-\d{1,2}(-\d{1,2})?$/.test(expr.replace(/\s/g, ""))) continue; // Datum
+      const nums = parts.filter((_, i) => i % 2 === 0).map(cfArithNum);
+      const stated = cfArithNum(m[4].replace(/^-/, "")); if (!stated || nums.some(x => !x)) continue;
+      if (m[4].startsWith("-")) stated.v = -stated.v;
+      // Punkt vor Strich
+      const vals = [nums[0].v], opl = [];
+      for (let i = 0; i < opsUsed.length; i++) {
+        const o = opsUsed[i], v = nums[i + 1].v;
+        if (/[*×x·]/i.test(o)) vals[vals.length - 1] *= v;
+        else if (/[÷:/]/.test(o)) { if (v === 0) { vals.length = 0; break; } vals[vals.length - 1] /= v; }
+        else { vals.push(o === "-" ? -v : v); }
+      }
+      if (!vals.length) continue;
+      let computed = vals.reduce((a, b) => a + b, 0);
+      const pct = !!m[5];
+      if (pct && !/%/.test(expr) && opsUsed.length === 1 && /[÷:/]/.test(opsUsed[0])) computed *= 100;
+      const ok = Math.abs(computed - stated.v) <= tol(stated, approx, pct) || trunc(computed, stated);
+      out.push({ kind: "ops", expr: m[0].trim(), stated: stated.v, computed, computedText: cfArithFmt(computed) + (pct ? " %" : ""), ok, approx });
+    }
+    // 2) Anteil: "15 von 40 = 50 %", "15 of 40 is 37.5%"
+    const share = new RegExp(String.raw`(?<![\d.,\w])(` + N + String.raw`)\s+(?:von|aus|of|out of)\s+(` + N + String.raw`)((?:\s+[A-Za-zÄÖÜäöüß-]+){0,3}?)\s*(=|≈|:|,)?\s*(?:(?:das )?(?:sind|ist|entspricht|entsprechen|also|ergibt|macht|equals|is|are|that is|that's)\s+)?(≈|~|ca\.?|circa|etwa|rund|ungefähr|about|approx\.?|roughly)?\s*(` + N + String.raw`)\s*(%|prozent|percent)`, "gi");
+    while ((m = share.exec(src)) !== null) {
+      if (!/(=|≈|sind|ist|entspricht|entsprechen|also|ergibt|macht|equals|\bis\b|\bare\b|that)/i.test(m[0].slice(m[1].length))) continue;
+      if (/%|prozent|percent/i.test(m[3] || "")) continue;
+      const a = cfArithNum(m[1]), b = cfArithNum(m[2]), st = cfArithNum(m[6]);
+      if (!a || !b || !st || !b.v || a.v > b.v) continue;
+      const approx = !!m[5] || m[4] === "≈";
+      const computed = 100 * a.v / b.v;
+      const ok = Math.abs(computed - st.v) <= (approx ? Math.max(st.v * 0.05, 1) : 0.5 * Math.pow(10, -st.dec) + 1e-9) || trunc(computed, st);
+      out.push({ kind: "share", expr: m[0].trim(), stated: st.v, computed, computedText: cfArithFmt(Math.round(computed * 100) / 100) + " %", ok, approx });
+    }
+    // 3) "25 % von 80 = 20"
+    const pctOf = new RegExp(String.raw`(?<![\d.,\w])(` + N + String.raw`)\s*(?:%|prozent|percent)\s+(?:von|of)\s+(` + N + String.raw`)\s*(=|≈|(?:sind|ist|ergibt|macht|equals|is|are)\b)\s*(≈|~|ca\.?|etwa|rund|about)?\s*(` + N + String.raw`)(?![\d.,]*\d)(?!\s*(%|prozent|percent))`, "gi");
+    while ((m = pctOf.exec(src)) !== null) {
+      const p = cfArithNum(m[1]), b = cfArithNum(m[2]), st = cfArithNum(m[5]);
+      if (!p || !b || !st) continue;
+      const approx = !!m[4] || m[3] === "≈", computed = p.v * b.v / 100;
+      const ok = Math.abs(computed - st.v) <= tol(st, approx) || trunc(computed, st);
+      out.push({ kind: "pctof", expr: m[0].trim(), stated: st.v, computed, computedText: cfArithFmt(computed), ok, approx });
+    }
+    return out;
   }
 
   return { techVerify, cipAnalyze, mathChecks, provenance, counterfactual,
     parseManifest, verifyManifest, collectOutputValues, extractDims, extractNumUnits,
-    extractHex64, splitSentences, parseNum, formatDE, cfAuditLayer3, cfPolConflicts, cfCertWords,
+    extractHex64, splitSentences, parseNum, formatDE, cfAuditLayer3, cfPolConflicts, cfCertWords, cfArith, cfPolarity, overallStatus, textVariants, hashMatches,
     detectTricks, cfNormalize, cfValues, cfMarkers, cfStance, CF_TRICK_RULES, CF_TRICK_FAMILIES };
 })();
 
@@ -2718,6 +2983,7 @@ function renderAudit(rep){
     (rep.sandboxCase ? ' <span class="badge b-gray">Sandbox-Testfall ' + esc(rep.sandboxCase) + (rep.demoKeyUsed ? " · Demo-Schlüssel" : "") + "</span>" : "") +
     ' &nbsp;·&nbsp; Ebene 3: ' + badge(rep.l3.status) + "</div>" +
     '<div class="hint">Gesamtstatus = schlimmster Ebenenstatus nach fester Präzedenz. Kein Score, keine Prozentwerte.</div>' +
+    '<div class="hint" id="exportTrustNote">Hinweis zum Export: Vertrauen in Schlüssel wurde nur lokal in diesem Browser vergeben. Der Export enthält eine Prüfsumme gegen nachträgliche Änderungen, ist aber kein unabhängiger Nachweis.</div>' +
     '<div class="btnrow no-print"><button class="ghost" onclick="exportAuditJSON()">⬇ Audit-JSON</button>' +
     '<button class="ghost" onclick="window.print()">🖨 Prüfprotokoll drucken</button></div></div>' +
 
@@ -2798,6 +3064,9 @@ function exportAuditJSON(){
       missing_evidence: s.missing, alternative: s.alternative, next_check: s.next })),
     math_checks: r.math,
     responsibility: r.resp,
+    trust_note: "Vertrauen in Signaturschlüssel wurde nur lokal in diesem Browser (Trusted-Key-Registry) vergeben. Dieser Export ist kein unabhängiger Nachweis: Wer ihn prüft, muss den Schlüssel selbst als vertrauenswürdig bestätigen.",
+    trusted_keys_used: (r.tech.D && r.tech.D.log && r.tech.D.log.public_key && r.tech.D.keyTrusted)
+      ? [{ name: r.tech.D.keyName || null, public_key_sha256: U7.sha256HexStr(String(r.tech.D.log.public_key).toLowerCase()) }] : [],
     auditor_self_disclosure: {
       deterministic_checks: ["ed25519_verify", "sha256_answer_binding", "sha256_reference_file",
         "value_unit_rulecheck", "scope_rulecheck", "mirroring_phantom_injection_rules",
@@ -2806,6 +3075,9 @@ function exportAuditJSON(){
         "trusted_timestamps"]
     }
   };
+  /* Integritätswert über den kanonischen Inhalt (keine Signatur: die App hat bewusst keinen privaten Schlüssel) */
+  payload.export_integrity = { algorithm: "sha256(canonicalJSON(payload ohne export_integrity))", sha256: U7.sha256HexStr(U7.canonicalJSON(payload)),
+    note: "Prüfsumme erkennt nachträgliche Änderungen, beweist aber nicht, wer den Export erstellt hat." };
   download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
     "unit7_v2_provenance_report.json");
 }
