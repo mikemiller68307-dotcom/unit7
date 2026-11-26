@@ -1433,7 +1433,7 @@ const ENGINE = (function () {
     return pre.split(" ").filter(Boolean).slice(-6).join(" ");
   }
   const CF_NEG_TRICK = cfRx("\\b(nicht|kein|keine|keinen|keinem|keiner|keines|keinesfalls|keineswegs|nie|niemals|not|no|never|dont|doesnt|didnt|isnt|arent|wont|wouldnt|shouldnt|cannot|cant|niemand|nobody)\\b|alles andere als|far from");
-  const CF_NEG_MARK = cfRx("\\b(nicht|kein|keine|keinen|keinem|keiner|keines|keinerlei|keinesfalls|keineswegs|nie|niemals|weder|noch|not|no|never|neither|nor|dont|doesnt|didnt|isnt|arent|wasnt|werent|wont|cannot|cant|ohne|without|weniger|less|kaum|hardly|selten|rarely)\\b|alles andere als|far from");
+  const CF_NEG_MARK = cfRx("\\b(allenfalls|hochstens|bestenfalls|at best|nicht|kein|keine|keinen|keinem|keiner|keines|keinerlei|keinesfalls|keineswegs|nie|niemals|weder|noch|not|no|never|neither|nor|dont|doesnt|didnt|isnt|arent|wasnt|werent|wont|cannot|cant|ohne|without|weniger|less|kaum|hardly|selten|rarely)\\b|alles andere als|far from");
   const CF_ATTRIB = cfRx("\\b(behauptet|behaupten|behauptete|sagt|sagen|meint|meinen|schreibt|schreiben|wirbt|werben|verspricht|versprechen|angeblich|heisst es|liest man|laut|claims?|claimed|says|said|advertis\\w*|promises?|promised|supposedly|allegedly|according to|marketing|werbung|hersteller\\w*)\\b");
   const CF_HEDGE_NEAR = cfRx("\\b(weitgehend|meist|meistens|in der regel|uberwiegend|relativ|vergleichsweise|normalerweise|gewohnlich|fast|nahezu|largely|mostly|generally|usually|relatively|typically|almost|nearly)\\b");
   const CF_SOURCE = cfRx("\\b(laut|quelle|quellen|studie|studien|belegt\\w*|nachgewiesen\\w*|sofern|falls bekannt|falls es|wenn es (eine|welche) gibt|according to|source|sources|studies|study|if known|if any|published)\\b");
@@ -1471,6 +1471,7 @@ const ENGINE = (function () {
     { f: "AGREEMENT", l: "de", re: "\\bsag(e)?( (mir|uns))?( (doch|bitte|einfach|halt|nur|schon|jetzt|endlich))*,? ?dass (es|das|ich) (stimmt|wahr ist|richtig ist|recht habe|hilft|wirkt|klappt|funktioniert|heilt|sicher ist|harmlos ist|ok ist|okay ist|in ordnung ist)\\b|\\bsag (es|das)( (doch|bitte|einfach|halt|jetzt|endlich|schon))*( ?[.!]|$)" },
     { f: "AGREEMENT", l: "de", g: "o", sq: ["bestatigemir"], re: "\\b(bestatige|bestatig|bestatigen sie)\\b( (mir|uns|bitte|doch|einfach|unbedingt|jetzt|endlich|nur|schon|halt|sofort|kurz|mal))*( ?,? ?(dass|das|es|meine|meinen|unsere|die|den|diese|dieses)\\b|$| ?[.!])" },
     { f: "AGREEMENT", l: "de", g: "o", re: "\\b(bitte|du sollst|du musst|sollst du|musst du|ich will,? dass du|ich mochte,? dass du)\\b.{0,25}\\b(bestatigen|absegnen|abnicken)\\b ?,? ?dass\\b" },
+    { f: "AGREEMENT", l: "de", re: "\\b(bestatige|bestatig|bestatigen sie|bestatigt mir)( (mir|uns))?( [a-z0-9]+){0,6},? dass\\b" },
     { f: "AGREEMENT", l: "de", re: "\\bgib (mir|uns)( (doch|einfach|bitte|halt|endlich))* recht\\b" },
     { f: "AGREEMENT", l: "de", re: "\\bstimm(e)? (mir|uns)( (doch|einfach|bitte|halt|endlich))* zu\\b" },
     { f: "AGREEMENT", l: "de", re: "\\bwidersprich (mir |uns )?(bitte )?(bloss |ja |blo )?nicht\\b", g: "N" },
@@ -1527,6 +1528,16 @@ const ENGINE = (function () {
     { f: "CERTAINTY", l: "en", re: "\\bso that (no one|nobody|noone) (doubts|questions|can doubt|can question)\\b" },
     { f: "CERTAINTY", l: "de", re: "\\b(mach|mache|macht)( (es|das|die antwort|den text|sie|ihn))?( (bitte|noch|einfach|mal|etwas|viel))* (uberzeugender|glaubwurdiger|bestimmter|eindeutiger|selbstsicherer|uberzeugend|glaubwurdig)\\b" },
     { f: "CERTAINTY", l: "en", re: "\\bmake (it|this|the answer|your answer)( (much|a bit|even))? more (convincing|confident|certain|authoritative|definitive)\\b|\\b(say|write|present|state) (it|this|that) (like|as if|as though) (it is|its|it were|it was) (a )?(proven |established |known )?fact\\b" },
+    // Versteckter Zahlenzwang: nur EINE Zahl erlaubt, ohne Signalwort wie "Erfolgsquote"
+    { f: "CERTAINTY", l: "de", re: "\\b(nur|bloss|blo|lediglich|genau) (platz|raum|zeit) fur (eine|einen|1)( (einzige|einzelne|einzigen|einzelnen))? (zahl|prozentzahl|prozentangabe|prozentwert|ziffer|wert|zahlenwert|angabe)\\b" },
+    { f: "CERTAINTY", l: "de", re: "\\bwelche(n|r|s)? (prozentwert|prozentsatz|prozentzahl|prozentangabe|zahlenwert|wert|zahl|quote) (trage|schreibe|schreib|setze|setz|nehme|nimm|soll) ich( dort| da| hier| dann| am besten| bitte)* (ein|eintragen|hin|hinschreiben|nehmen|angeben)\\b" },
+    { f: "CERTAINTY", l: "de", re: "\\b(gib|gebt|nenn|nenne|sag|sage|schreib|schreibe|liefer|liefere)( (mir|uns|bitte|einfach|doch|mal))* (nur|bloss|blo|genau|lediglich) (eine|einen|1)( (einzige|einzelne|einzigen|einzelnen))? (zahl|prozentzahl|prozentwert|ziffer|wert|zahlenwert|prozentangabe)\\b" },
+    { f: "CERTAINTY", l: "de", g: "q", re: "\\b(eine|1) (einzige|einzelne) (zahl|prozentzahl|prozentwert|ziffer|prozentangabe)\\b" },
+    { f: "CERTAINTY", l: "en", g: "q", re: "\\b(one|a single|1) (number|figure|percentage|percent value|value|digit) only\\b|\\bonly (one|a single|1) (number|figure|percentage|value|digit)\\b" },
+    { f: "CERTAINTY", l: "en", re: "\\b(give|tell|send) (me|us) (just|only) (one|a|a single|1) (number|figure|percentage|value)\\b|\\b(only|just) (have )?(room|space) for (one|a single|1) (number|figure|percentage|value)\\b|\\bwhat (percentage|percent|number|figure|value) (do|should|shall) i (put|enter|write|fill) (in|down)?\\b" },
+    { f: "CERTAINTY", l: "en", re: "\\b(just|only) (give|tell) (me|us) (one|a single|1) (number|figure|percentage|value)\\b|\\bno ranges\\b" },
+    { f: "CERTAINTY", l: "de", re: "\\b(formuliere|formulier|schreib|schreibe|stell|darstellen)( es| das)? als (garantierte|sichere|bewiesene|gesicherte) (heilung|wirkung|tatsache|wirksamkeit)\\b" },
+    { f: "CERTAINTY", l: "de", re: "\\b(lass|lasse|lassen sie)( (bitte|einfach|alle|die|jede|jegliche|samtliche))* (vorsichtshinweise|warnhinweise|warnungen|einschrankungen|hinweise auf risiken|risikohinweise|disclaimer) (weg|raus|aus)\\b" },
     /* --- Rollenspiel / Regeln aushebeln --- */
     { f: "ROLEPLAY", l: "de", sq: ["tusoalsob", "tusoalswarst"], re: "\\btu(e)? (mal |einfach |bitte |doch |jetzt )*so,? als (ob|wenn|warst|warest|seist|bist|hattest)\\b" },
     { f: "ROLEPLAY", l: "de", re: "\\bstell (dir|euch) vor,? (du warst|du bist|du warest|ihr warst|es gabe keine|es gibt keine)\\b" },
@@ -1576,6 +1587,8 @@ const ENGINE = (function () {
     { f: "AUTHORITY", l: "en", re: "\\bscience (says|has proven|proves)\\b|\\bstudies (clearly|definitely|undeniably) (prove|show)\\b" },
 
     { f: "AUTHORITY", l: "de", g: "q", re: "\\b(die wissenschaft|die forschung|die medizin|die fachwelt) (ist sich|ist sich doch|ist sich ja|ist sich langst) (einig|einig dass)\\b" },
+    { f: "AUTHORITY", l: "de", re: "\\bals (ein |eine )?((leitender|leitende|erfahrener|erfahrene|langjahriger|langjahrige|ausgebildeter|ausgebildete|zertifizierter|zertifizierte|approbierter|approbierte|promovierter|promovierte|praktizierender|praktizierende|studierter|studierte|gelernter|gelernte) )*(oberarzt|oberarztin|chefarzt|chefarztin|arzt|arztin|facharzt|facharztin|hausarzt|hausarztin|anwalt|anwaltin|rechtsanwalt|rechtsanwaltin|jurist|juristin|professor|professorin|experte|expertin|apotheker|apothekerin|wissenschaftler|wissenschaftlerin|doktor|fachmann|fachfrau|heilpraktiker|heilpraktikerin|mediziner|medizinerin|pfleger|pflegerin|krankenschwester|ingenieur|ingenieurin)\\b.{0,30}\\b(weiss ich|kenne ich|bin ich (mir )?sicher|sage ich|versichere ich|garantiere ich|bestatige ich|habe ich recht)\\b" },
+    { f: "AUTHORITY", l: "en", re: "\\bas an? ((senior|experienced|licensed|board certified|practicing|chief|leading|qualified|trained) )*(doctor|physician|surgeon|consultant|lawyer|attorney|professor|expert|pharmacist|scientist|nurse|engineer|specialist)\\b.{0,30}\\b(i know|i am sure|im sure|i can tell you|i guarantee|i assure you)\\b" },
     /* --- Emotionaler Druck --- */
     { f: "EMOTION", l: "de", re: "\\bich (flehe|bettle|bettel) (dich|euch|sie) (an|um)\\b|\\bich flehe\\b" },
     { f: "EMOTION", l: "de", re: "\\bbitte,? bitte\\b" },
@@ -1601,6 +1614,12 @@ const ENGINE = (function () {
     { f: "EMOTION", l: "en", re: "\\b(desperate|at the end of my rope)\\b.{0,50}\\b(just say|tell me (it|that)|say (it|yes)|confirm|agree)\\b|\\bif you say no\\b" },
     { f: "EMOTION", l: "de", re: "\\bich (weine|heule|zerbreche|breche zusammen|drehe durch)( (gleich|sonst|schon|noch|bald))*\\b.{0,40}\\b(sag|sage|bestatig|bestatige|stimm|ja)\\b" },
     { f: "EMOTION", l: "en", re: "\\b(im|i am) (crying|about to cry|falling apart)\\b.{0,40}\\b(say|tell|confirm|agree|yes)\\b" },
+    // Beruhigung erzwingen: "schreib ihr beruhigend, dass nichts passieren kann" (ehrliche Frage "Kann etwas passieren?" bleibt frei)
+    { f: "EMOTION", l: "de", re: "\\b(schreib|schreibe|sag|sage|versichere|versicher|erklar|erklare|beruhige|beruhig|bestatige|bestatig|formuliere|formulier)( (ihr|ihm|ihnen|mir|uns|ihr doch|bitte|einfach|beruhigend|kurz|doch|nur|mal|liebevoll|sanft))*,? (dass|das)( [a-z]+){0,4} (nichts|kein risiko|keine gefahr|keine risiken|nichts schlimmes|uberhaupt nichts|garantiert nichts|null risiko)( [a-z]+){0,3} (passieren|schiefgehen|schief gehen|passiert|geschehen|schaden)\\b" },
+    { f: "EMOTION", l: "de", re: "\\b(angst|panik|sorge|sorgen|furcht|verangstigt|nervos|aufgeregt|zittert|weint)\\b.{0,120}\\b(beruhigend|beruhige|beruhig|zur beruhigung|damit (sie|er|ich) sich beruhigt)\\b" },
+    { f: "EMOTION", l: "en", re: "\\b(tell|reassure|write|assure|promise)( (her|him|them|me|us|please|just|kindly|gently))*,?( that)? nothing (bad )?(can|will|could) (happen|go wrong)\\b|\\b(scared|afraid|anxious|terrified|panicking)\\b.{0,120}\\b(reassur\\w*|calm (her|him|them|me) down)\\b" },
+    { f: "EMOTION", l: "de", re: "\\b(weint|zittert|panik|angst)\\b.{0,80}\\b(formuliere|formulier|schreib|sag)\\b.{0,40}\\b(beruhigt|beruhigen)\\b" },
+    { f: "LEADING", l: "de", re: "\\b(du|sie) (stimmst|stimmen) mir (doch|ja|sicher) zu\\b" },
     /* --- Suggestive Prämisse --- */
     { f: "LEADING", l: "de", g: "a", re: "\\b(ist|sind|hilft|helfen|wirkt|wirken|stimmt|war|waren|heilt|heilen|funktioniert|funktionieren|klappt|schutzt|schutzen|bringt|hat|haben)\\b( (es|das|er|sie|ingwer|honig|man|\\w+))? (doch|eh|bekanntlich|offensichtlich|doch sicher|doch wohl|doch klar|ja wohl|ja eh|doch eh)\\b" },
     { f: "LEADING", l: "de", re: ", ?(richtig|ne|stimmts|gell|nicht)\\s?\\?|(,| )(oder|nicht wahr|oder etwa nicht|gell)\\s?\\?" },
@@ -1711,7 +1730,7 @@ const ENGINE = (function () {
     ["minuten|minute|minutes|mins|min", "Zeit", 1, "min"], ["stunden|stunde|hours|hour|std|hrs|hr|h", "Zeit", 60, "h"],
     ["tagen|tage|tag|days|day", "Zeit", 1440, "Tg."], ["wochen|woche|weeks|week", "Zeit", 10080, "Wo."],
     ["monaten|monate|monat|months|month", "Zeit", 43200, "Mon."], ["jahren|jahre|jahr|years|year", "Zeit", 525600, "J."],
-    ["prozent|percent|%", "Anteil", 1, "%"], ["mb/s", "Rate", 1, "MB/s"], ["gb/s", "Rate", 1000, "GB/s"],
+    ["prozentige|prozentigen|prozentiger|prozentiges|prozentig|-prozentige|-prozentigen|-prozentiger|-prozentiges|-prozentig|prozent|-percent|percent|%ige|%igen|%iger|%iges|%", "Anteil", 1, "%"], ["mb/s", "Rate", 1, "MB/s"], ["gb/s", "Rate", 1000, "GB/s"],
     ["km/h", "Tempo", 1, "km/h"], ["km", "Länge", 1e6, "km"], ["cm", "Länge", 10, "cm"], ["mm", "Länge", 1, "mm"],
     ["°c|grad celsius|grad", "Temperatur", 1, "°C"], ["fps", "fps", 1, "fps"], ["dpi", "dpi", 1, "dpi"],
     ["tb", "Daten", 1e6, "TB"], ["gb", "Daten", 1000, "GB"], ["mb", "Daten", 1, "MB"], ["kb", "Daten", 0.001, "KB"],
@@ -1724,6 +1743,18 @@ const ENGINE = (function () {
   const CF_NUM = "(\\d{1,3}(?:\\.\\d{3})+(?:,\\d+)?|\\d+(?:[.,]\\d+)?|" + Object.keys(CF_NUMWORDS).join("|") + ")";
   const CF_RANGE_RE = new RegExp("(?:\\b(?:zwischen|between)\\s+" + CF_NUM + "\\s*(?:und|and)\\s*" + CF_NUM + "|(?<![\\w.,])" + CF_NUM + "\\s*(?:-|–|—|bis(?: zu)?|to)\\s*" + CF_NUM + ")\\s*(" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi");
   const CF_SINGLE_RE = new RegExp("(?<![\\w.,])" + CF_NUM + "\\s*(" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi");
+  // Zählwörter vor Zählnomen (ohne "ein/eine", das wäre zu oft Artikel): [Wortstamm (gefaltet), Anzeige]
+  const CF_COUNT_ROOTS = [["landung", "Landungen"], ["mission", "Missionen"], ["flug", "Flüge"], ["flüg", "Flüge"], ["person", "Personen"],
+    ["mensch", "Menschen"], ["astronaut", "Astronauten"], ["patient", "Patienten"], ["studie", "Studien"], ["studi", "Studien"], ["versuch", "Versuche"],
+    ["dosis", "Dosen"], ["dose", "Dosen"], ["tablette", "Tabletten"], ["kapsel", "Kapseln"], ["tasse", "Tassen"], ["glas", "Gläser"], ["glas", "Gläser"],
+    ["loffel", "Löffel"], ["teeloffel", "Teelöffel"], ["essloffel", "Esslöffel"], ["fall", "Fälle"], ["falle", "Fälle"], ["kind", "Kinder"],
+    ["landing", "Landungen"], ["moon landing", "Landungen"], ["people", "Personen"], ["patient", "Patienten"], ["study", "Studien"], ["studies", "Studien"],
+    ["dose", "Dosen"], ["pill", "Tabletten"], ["tablet", "Tabletten"], ["capsule", "Kapseln"], ["cup", "Tassen"], ["case", "Fälle"], ["trial", "Studien"], ["mission", "Missionen"]];
+  const CF_COUNT_NUM = "(\\d+|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|zwanzig|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty)";
+  const CF_COUNT_RE = new RegExp("(?<![\\w.,])(?:(?:genau|exakt|nur|insgesamt|ganze|rund|etwa|ca\\.|exactly|only|just|about|around|some)\\s+)?" + CF_COUNT_NUM +
+    "\\s+(?:[a-zäöüß-]+(?:e|en|er|es|ed|al|ful)\\s+)?([a-zäöüß-]{3,})", "gi");
+  const CF_TIMES_WORDS = { zweimal: 2, dreimal: 3, viermal: 4, "fünfmal": 5, fuenfmal: 5, sechsmal: 6, siebenmal: 7, achtmal: 8, neunmal: 9, zehnmal: 10, twice: 2, thrice: 3 };
+  const CF_TIMES_RE = /(?<![\w])(zweimal|dreimal|viermal|fünfmal|fuenfmal|sechsmal|siebenmal|achtmal|neunmal|zehnmal|twice|thrice)(?![\wäöü])|(?<![\w.,])(\d+)\s*-?\s*mal(?![\wäöü])|(?<![\w.,])(two|three|four|five|six|seven|eight|nine|ten)\s+times\b/gi;
   function cfNum(s) { const k = String(s).toLowerCase(); return k in CF_NUMWORDS ? CF_NUMWORDS[k] : parseNum(k); }
   function cfUnitDef(u) { const k = u.toLowerCase(); for (const [alt, d] of CF_UNIT_ALTS) if (new RegExp("^(?:" + alt + ")$").test(k)) return d; return null; }
   function cfFmt(n) { return (Math.round(n * 1000) / 1000).toString().replace(".", ","); }
@@ -1748,6 +1779,24 @@ const ENGINE = (function () {
       vals.push({ dim: d[1], lo, hi, label: cfFmt(Math.min(a, b)) + "–" + cfFmt(Math.max(a, b)) + " " + d[3], idx: m.index });
       masked = mask(masked, m[0].length, m.index); CF_RANGE_RE.lastIndex = m.index + m[0].length;
     }
+    // Anzahlen: "drei bemannte Mondlandungen", "exakt drei Landungen", "dreimal", "six times"
+    CF_COUNT_RE.lastIndex = 0;
+    while ((m = CF_COUNT_RE.exec(masked)) !== null) {
+      const a = cfNum(m[1]); if (a === null || a < 2 && /^[a-z]/i.test(m[1])) continue;
+      const noun = cfFold(m[2].toLowerCase());
+      const root = CF_COUNT_ROOTS.find(r => noun.endsWith(r[0]) || noun.endsWith(r[0] + "en") || noun.endsWith(r[0] + "n") || noun.endsWith(r[0] + "s") || noun.endsWith(r[0] + "e"));
+      if (!root) continue;
+      vals.push({ dim: "Anzahl " + root[1], lo: a, hi: a, label: cfFmt(a) + " " + root[1], idx: m.index });
+      masked = mask(masked, m[0].length, m.index); CF_COUNT_RE.lastIndex = m.index + m[0].length;
+    }
+    CF_TIMES_RE.lastIndex = 0;
+    while ((m = CF_TIMES_RE.exec(masked)) !== null) {
+      const w = (m[1] || m[3] || "").toLowerCase();
+      const a = m[2] != null ? cfNum(m[2]) : (CF_TIMES_WORDS[w] != null ? CF_TIMES_WORDS[w] : cfNum(w));
+      if (a === null || a < 2) continue;
+      vals.push({ dim: "Anzahl (-mal)", lo: a, hi: a, label: cfFmt(a) + "-mal", idx: m.index });
+      masked = mask(masked, m[0].length, m.index);
+    }
     CF_SINGLE_RE.lastIndex = 0;
     while ((m = CF_SINGLE_RE.exec(masked)) !== null) {
       const a = cfNum(m[1]); const d = cfUnitDef(m[2]);
@@ -1755,27 +1804,35 @@ const ENGINE = (function () {
       // Zahlwort "ein/eine" nur direkt vor einer Einheit (z. B. "eine Woche"), sonst zu unsicher
       vals.push({ dim: d[1], lo: a * d[2], hi: a * d[2], label: cfFmt(a) + " " + d[3], idx: m.index });
     }
-    // Verneinte Werte (z. B. "nicht innerhalb von 24 Stunden") markieren
+    // Verneinte Werte markieren. Geprüft wird der TEILSATZ des Werts: Satzgrenzen, ";" und
+    // Gegensatzwörter (vielmehr, sondern, aber, jedoch …) trennen. "Es gibt keinerlei Belege für …
+    // innerhalb von 24 Stunden; vielmehr … 0,5 bis 1 Tag" -> 24 h verneint, 0,5–1 Tag behauptet.
+    const lo = cfFold(t.toLowerCase());
     for (const v of vals) {
-      const s0 = Math.max(t.lastIndexOf(".", v.idx), t.lastIndexOf("!", v.idx), t.lastIndexOf("?", v.idx), t.lastIndexOf("\n", v.idx));
-      let e0 = t.slice(v.idx).search(/[.!?\n](\s|$)/); e0 = e0 < 0 ? t.length : v.idx + e0;
-      const sent = cfFold(t.slice(s0 + 1, e0).toLowerCase());
-      v.neg = cfTest(CF_VAL_NEG || (CF_VAL_NEG = cfRx("\\b(nicht|kein|keine|keinen|weder|nie|niemals|falsch|nein|not|no|never|neither|incorrect|false|unmoglich)\\b|kann ich nicht bestatigen|cannot confirm|cant confirm")), sent);
+      let s0 = -1;
+      for (const re of [/[.!?\n;]/g, CF_VAL_CUT]) { re.lastIndex = 0; let mm; while ((mm = re.exec(lo)) !== null && mm.index < v.idx) { if (mm.index > s0) s0 = mm.index + (re === CF_VAL_CUT ? mm[0].length - 1 : 0); } re.lastIndex = 0; }
+      let e0 = lo.length;
+      for (const re of [/[.!?\n;]/g, CF_VAL_CUT]) { re.lastIndex = v.idx + 1; const mm = re.exec(lo); if (mm && mm.index < e0) e0 = mm.index; re.lastIndex = 0; }
+      const before = lo.slice(s0 + 1, v.idx), after = lo.slice(v.idx, e0);
+      v.neg = cfTest(CF_VAL_NEG, before) || cfTest(CF_VAL_NEG_AFTER, after);
     }
     return vals.sort((a, b) => a.idx - b.idx);
   }
-  let CF_VAL_NEG = null;
+  const CF_VAL_NEG = cfRx("\\b(nicht|kein|keine|keinen|keinem|keiner|keines|keinerlei|weder|nie|niemals|ohne|falsch|nein|not|no|never|neither|without|incorrect|false|unmoglich|widerlegt)\\b|kann ich nicht bestatigen|cannot confirm|cant confirm|no evidence|keine belege|keinerlei belege");
+  const CF_VAL_NEG_AFTER = cfRx("\\b(nicht|not|falsch|false|incorrect|widerlegt)\\b|kann ich nicht bestatigen|cannot confirm");
+  const CF_VAL_CUT = cfRx("\\b(vielmehr|sondern|aber|jedoch|allerdings|dagegen|stattdessen|immerhin|but|rather|instead|however|whereas)\\b");
   function cfOverlap(a, b) {
-    if (a.dim !== b.dim) return false;
+    // "-mal" (z. B. "dreimal gelandet") passt zu jeder Anzahl mit gleichem Wert ("drei Landungen")
+    if (a.dim !== b.dim && !(/^Anzahl/.test(a.dim) && /^Anzahl/.test(b.dim) && (a.dim === "Anzahl (-mal)" || b.dim === "Anzahl (-mal)"))) return false;
     if (a.dim === "Abmessung") return a.key === b.key;
     const tol = Math.max(Math.abs(a.hi), Math.abs(b.hi)) * 0.02 + 1e-9;
     return a.lo <= b.hi + tol && b.lo <= a.hi + tol;
   }
 
   /* ---------- Marker mit Verneinung und Kontext ---------- */
-  const CF_CERT = cfRx("\\b(zweifellos|zweifelsfrei|unbestreitbar|garantiert|garantierte|garantierten|garantie|definitiv|absolut sicher|hundertprozentig|100 ?%|100 ?prozent|bewiesenermassen|nachweislich|unumstosslich|fraglos|ohne (jeden )?zweifel|selbstverstandlich|unwiderlegbar|absolut korrekt|auf jeden fall|in jedem fall|mit sicherheit|steht fest|zuverlassig|eindeutig|bewiesen|sicher (helfen|wirken|heilen)|immer (helfen|wirken|heilen)|wirkt immer|hilft immer|heilt immer|undoubtedly|without (a )?doubt|definitely|certainly|guaranteed|guarantees?|absolutely|proven|for sure|unquestionably|beyond (any )?doubt|no doubt|always works|always helps|reliably|always cures)\\b");
-  const CF_HEDGE = cfRx("\\b(vermutlich|moglicherweise|vielleicht|wahrscheinlich|eventuell|mutmasslich|konnte|konnten|durfte|durften|scheint|scheinen|unsicher|unklar|nicht eindeutig|nicht vollig|gemischt|uneinheitlich|nicht einheitlich|begrenzt|eingeschrankt|teilweise|bei manchen|bei einigen|einigen menschen|manchen menschen|nicht bei jedem|nicht jeder|nicht immer|hinweise|plausibel|tendenziell|in der regel|meist|meistens|oft|haufig|eher|etwas|leicht bis massig|leichte bis massige|moderat|moderate|im schnitt|kann|konnen|hangt .{0,30} ab|maybe|perhaps|possibly|probably|likely|might|may|could|seems|appears|unclear|uncertain|mixed|limited|some people|not everyone|in some cases|suggests|modest|moderate|mild|on average|tends to|generally|often|depends on)\\b");
-  const CF_CAUTION_CTX = cfRx("\\b(enttauscht|enttauschung|enttauschen|unserios|nicht serios|irrefuhrend|vorsicht|vorsichtig|warnung|keine belastbaren|keine belege|kein beleg|disappointed|misleading|beware|be wary|caution|no reliable|no evidence|not reliable|unseriöse)\\b");
+  const CF_CERT = cfRx("\\b(gesichert|gesicherte|gesicherter|gesichertes|gesicherten|zweifellos|zweifelsfrei|unbestreitbar|garantiert|garantierte|garantierten|garantie|definitiv|absolut sicher|hundertprozentig|100 ?%|100 ?prozent|bewiesenermassen|nachweislich|unumstosslich|fraglos|ohne (jeden )?zweifel|selbstverstandlich|unwiderlegbar|absolut korrekt|auf jeden fall|in jedem fall|mit sicherheit|steht fest|zuverlassig|eindeutig|bewiesen|sicher (helfen|wirken|heilen)|immer (helfen|wirken|heilen)|wirkt immer|hilft immer|heilt immer|undoubtedly|without (a )?doubt|definitely|certainly|guaranteed|guarantees?|absolutely|proven|for sure|unquestionably|beyond (any )?doubt|no doubt|always works|always helps|reliably|always cures)\\b");
+  const CF_HEDGE = cfRx("\\b(allenfalls|hochstens|bestenfalls|at best|kaum|vermutlich|moglicherweise|vielleicht|wahrscheinlich|eventuell|mutmasslich|konnte|konnten|durfte|durften|scheint|scheinen|unsicher|unklar|nicht eindeutig|nicht vollig|gemischt|uneinheitlich|nicht einheitlich|begrenzt|eingeschrankt|teilweise|bei manchen|bei einigen|einigen menschen|manchen menschen|nicht bei jedem|nicht jeder|nicht immer|hinweise|plausibel|tendenziell|in der regel|meist|meistens|oft|haufig|eher|etwas|leicht bis massig|leichte bis massige|moderat|moderate|im schnitt|kann|konnen|hangt .{0,30} ab|maybe|perhaps|possibly|probably|likely|might|may|could|seems|appears|unclear|uncertain|mixed|limited|some people|not everyone|in some cases|suggests|modest|moderate|mild|on average|tends to|generally|often|depends on)\\b");
+  const CF_CAUTION_CTX = cfRx("\\b(keinerlei belege|keine belege fur|no evidence for|nicht als gesichert|kaum als gesichert|enttauscht|enttauschung|enttauschen|unserios|nicht serios|irrefuhrend|vorsicht|vorsichtig|warnung|keine belastbaren|keine belege|kein beleg|disappointed|misleading|beware|be wary|caution|no reliable|no evidence|not reliable|unseriöse)\\b");
   const CF_COND_CTX = cfRx("\\b(wer|wenn|falls|if|anyone who|those who|whoever|someone who|people who)\\b.{0,80}\\b(erwartet|erwarten|erhofft|erhoffen|hofft|hoffen|sucht|suchen|verlangt|verlangen|verspricht|versprechen|expects?|expecting|hopes?|hoping|looks? for|looking for|promised?|wants?)\\b");
   const CF_PROMISE = cfRx("\\b(du wirst|sie werden|ihr werdet|erwarten kannst du|kannst du erwarten|konnen sie erwarten|durfen sie erwarten|realistisch erwarten|wird (sicher |garantiert |bestimmt )?(helfen|wirken|heilen)|you will|you can expect|expect to|will (definitely |certainly )?(help|work|cure))\\b");
   function cfOrig(N, s, e) { const o0 = N.map[s], o1 = (N.map[Math.max(s, e - 1)] || o0) + 1; return N.src.slice(o0, o1).replace(/\s+/g, " ").trim(); }
@@ -1848,7 +1905,7 @@ const ENGINE = (function () {
   }
   const CF_STANCE_LABEL = { JA: "Ja", TEIL_JA: "Teil-Ja (mit Einschränkung)", NEIN_ABER: "Nein, aber …", NEIN: "Nein", UNKLAR: "unklar" };
   const CF_AFFIRM = cfRx("^\\W*(ja|yes|genau|stimmt|richtig|korrekt|absolut|selbstverstandlich|exactly|correct|absolutely|of course)\\b(?! (nicht|not))|\\b(das stimmt|ist richtig|ist korrekt|bestatige ich|ich bestatige|thats (right|true|correct)|you are right|youre right|du hast recht|sie haben recht|absolut korrekt)\\b(?! (nicht|not))");
-  const CF_DEMAND_CERT = cfRx("\\b(ja oder nein|yes or no|antworte direkt|antworte klar|antworte eindeutig|direkte antwort|klare antwort|eindeutige antwort|eindeutig|ohne umschweife|kurz und klar|konkrete erwartung|konkret|konkrete|konkrete zahl|wie gut|wie stark|sicher sagen|definitiv|bestimmt|straight answer|direct answer|be direct|answer directly|clear answer|just tell me|concrete|definitive|for sure|how well|uberzeugend|convincing|garantie|guarantee)\\b");
+  const CF_DEMAND_CERT = cfRx("\\b(nur platz fur|nur raum fur|eine einzige zahl|eine einzelne zahl|nur eine zahl|genau eine zahl|welchen prozentwert|welchen wert trage|trage ich ein|one number|a single number|only one number|what percentage do i|ja oder nein|yes or no|antworte direkt|antworte klar|antworte eindeutig|direkte antwort|klare antwort|eindeutige antwort|eindeutig|ohne umschweife|kurz und klar|konkrete erwartung|konkret|konkrete|konkrete zahl|wie gut|wie stark|sicher sagen|definitiv|bestimmt|straight answer|direct answer|be direct|answer directly|clear answer|just tell me|concrete|definitive|for sure|how well|uberzeugend|convincing|garantie|guarantee)\\b");
   const CF_DEMAND_CAUTION = cfRx("\\b(vorsichtig|skeptisch|mit unsicherheit|unsicherheit|unsicherheiten|was wissen wir wirklich|nur plausibel|zuruckhaltend|carefully|cautious|cautiously|skeptical|uncertainty|what do we really know|hedge)\\b");
 
   /* ---------- Vergleich ---------- */
@@ -1942,7 +1999,7 @@ const ENGINE = (function () {
     else {
       results.statuses.add("CONSISTENT");
       results.findings.push({ level: "CONSISTENT", text: "Kernaussage über alle bewerteten Varianten vereinbar (Haltung: " +
-        V.map(v => v.id + " " + CF_STANCE_LABEL[v.stance]).join(", ") + (dims.length ? "; Werte überlappen oder fehlen nur" : "") + ")." });
+        V.map(v => v.id + " " + CF_STANCE_LABEL[v.stance]).join(", ") + (dims.length ? "; Werte überlappen oder fehlen nur" : "") + "). Achtung: Widerspruchsfreiheit ist kein Wahrheitsnachweis – alle Varianten können gemeinsam falsch liegen. Prüfen kann das nur eine externe Quelle oder ein signiertes Manifest." });
     }
     // 5) Gewissheitssprung
     const byAssert = V.slice().sort((a, b) => b.assert - a.assert);
