@@ -8,7 +8,7 @@ Unit 7 is a deterministic provenance and evidence auditor for AI-generated empir
 2. **Numerical / Dimension Consistency** (Does the claimed value match the cryptographically signed tool output within explicit rounding tolerances?)
 3. **Scope / Channel Validity** (Does the claim stay within the measured channel, region of interest, and parameter scope?)
 
-All verification runs **100% client-side** in the visitor's browser via standard WebCrypto (`Ed25519` + `SHA-256`) and a deterministic rule kernel (`0 LLM calls`, zero background telemetry).
+All verification runs **100% client-side** in the visitor's browser and a deterministic rule kernel (`0 LLM calls`, zero background telemetry). V1 uses the browser's standard WebCrypto API (`Ed25519` + `SHA-256`); V2 uses its own bundled pure-JavaScript implementations (RFC 8032 Ed25519 verification, SHA-512, SHA-256) and does not depend on WebCrypto.
 
 ## Unit 7 V2 – "The Human Layer" (Cognitive Integrity Protocol)
 
@@ -31,7 +31,7 @@ What V2 adds on top of V1:
 | E – Mirroring | Sycophancy/premise mirroring, phantom citations, prompt-injection traces |
 | CIP | Statement decomposition, arithmetic consistency, certainty-vs-evidence coupling, counterfactual lab (variants A–E), auditor self-disclosure |
 
-V2 includes 11 interactive sandbox reference cases (8 adversarial + 3 Cognitive-Integrity/Human-Layer cases) with real build-time Ed25519 signatures, a local trusted-key registry, dark/light mode, and deterministic audit-JSON export.
+V2 includes 11 interactive sandbox reference cases (8 adversarial + 3 Cognitive-Integrity/Human-Layer cases) with real build-time Ed25519 signatures, a local trusted-key registry, dark/light mode, and deterministic audit-JSON export. The built-in demo key (public key only; no private key is shipped) is trusted only for the unmodified sandbox cases; manifests signed with it in your own audits are reported as `UNTRUSTED_KEY`.
 
 ## Build & Verify Locally
 

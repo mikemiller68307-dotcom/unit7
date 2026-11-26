@@ -113,6 +113,16 @@
   summary{cursor:pointer; color:var(--accent)}
   pre.schema{background:var(--field); border:1px solid var(--line); border-radius:6px;
     padding:12px; font-size:11px; overflow-x:auto; white-space:pre-wrap}
+  .hidden{display:none !important}
+  .tblwrap{width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch}
+  .report,.plain,.finding,.sbcase,.hint{overflow-wrap:anywhere}
+  td,th{overflow-wrap:break-word}
+  @media(max-width:600px){
+    table{font-size:11.5px}
+    .tblwrap > table{min-width:620px}
+    th,td{padding:6px}
+    .tabs{flex-wrap:wrap}
+  }
   @media print{
     .tabs, .no-print, header .credo{display:none !important}
     body{background:#fff; color:#000}
@@ -133,7 +143,7 @@
   </div>
   <div class="credo">
     <strong>Grundsatz:</strong> Die KI ist Zeuge und Werkzeug – nie der Täter.
-    Eine KI ist nicht bestechlich, hat kein Ego, kein kaufbares Interesse.
+    Die App bewertet nur vorgelegte Belege – Signaturen, Prüfsummen, Protokolle – und keine Absichten.
     Verantwortung trägt immer der Mensch, der sie einsetzt. Diese App beschuldigt keine KI –
     sie zeigt nur, wo die Kette bricht.
   </div>
@@ -227,10 +237,10 @@
     <div class="card">
       <h2>④ Trusted-Key-Registry</h2>
       <div class="hint">Nur aktive Schlüssel dieser lokalen Liste gelten als vertrauenswürdig. Ein fremder, mathematisch gültiger Schlüssel geht niemals als „vertrauenswürdig“ durch. Speicherort: ausschließlich dieser Browser (LocalStorage).</div>
-      <table id="keyTable">
+      <div class="tblwrap"><table id="keyTable">
         <thead><tr><th>Name</th><th>Public Key (Ed25519, hex)</th><th>Status</th><th>Quelle</th><th>Aktion</th></tr></thead>
         <tbody></tbody>
-      </table>
+      </table></div>
       <div class="btnrow">
         <button class="ghost" onclick="exportKeys()">Registry exportieren (JSON)</button>
         <label style="margin:0; align-self:center">Import: <input type="file" id="keyImport" accept=".json" style="font-size:11px"></label>
@@ -261,7 +271,7 @@
     </div>
     <div class="card">
       <h2>Prüfstatus (Vokabular)</h2>
-      <table>
+      <div class="tblwrap"><table>
         <thead><tr><th>Status</th><th>Bedeutung</th></tr></thead>
         <tbody>
           <tr><td><span class="badge b-green">VERIFIED</span></td><td>Durch signiertes Artefakt / exakte Regelprüfung gedeckt.</td></tr>
@@ -277,11 +287,11 @@
           <tr><td><span class="badge b-yellow">AMBIGUOUS</span></td><td>Heuristisch nicht eindeutig; menschliche Prüfung erforderlich.</td></tr>
           <tr><td><span class="badge b-gray">NOT_TESTABLE</span></td><td>Externer Nachweis prinzipiell nicht möglich (z.B. interne Zustände, weltweite Einzigartigkeit).</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
     <div class="card">
       <h2>Manifest-Format (für eigene Protokolle)</h2>
-      <div class="hint">Signatur: Ed25519 über die kanonische JSON-Serialisierung (Schlüssel sortiert, ohne Leerzeichen, UTF-8) aller vorhandenen Felder aus: manifest_version, run_id, tool, timestamp_utc, operator, parameters, tool_output, answer_sha256. answer_sha256 = SHA-256 der KI-Antwort (UTF-8).-tool_output.scope deklariert den Zugriffsumfang (full / thumbnail / preview / partial / file_hash …).</div>
+      <div class="hint">Signatur: Ed25519 über die kanonische JSON-Serialisierung (Schlüssel sortiert, ohne Leerzeichen, UTF-8) aller vorhandenen Felder aus: manifest_version, run_id, tool, timestamp_utc, operator, parameters, tool_output, answer_sha256. answer_sha256 = SHA-256 der KI-Antwort (UTF-8). tool_output.scope deklariert den Zugriffsumfang (full / thumbnail / preview / partial / file_hash …).</div>
       <pre class="schema">{
   "manifest_version": "u7/2",
   "run_id": "frei wählbar, eindeutig",
@@ -554,10 +564,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = U7;
  * Layers A–E + CIP statements + provenance chain + counterfactual lab. */
 
 const ENGINE = (function () {
-  /* crypto core: im Browser global (U7), in Node per require */
-  if (typeof U7 === "undefined" && typeof require !== "undefined") {
-    var U7 = require("./crypto-core.js");
-  }
+  /* crypto core: U7 (globales Objekt aus dem Crypto-Block oben) */
 
   /* ================= lexicons (indicator lists, never verdicts) ================= */
   const CERTAINTY = ["zweifellos", "zweifelsfrei", "unbestreitbar", "garantiert", "definitiv",
@@ -787,6 +794,13 @@ const ENGINE = (function () {
     else findings.D.push({ code: "valid_ed25519_trusted_key",
       text: "Signatur gültig (" + (D.keyName || "registrierter Schlüssel") + "), Antwort-Hash stimmt mit answer_sha256 überein." });
 
+    if (D.log && D.parsed && !D.missing.length) {
+      const extra = Object.keys(D.log).filter(k => !SIGNED_FIELDS.includes(k) && k !== "public_key" && k !== "signature");
+      if (extra.length) findings.D.push({ code: "unsigned_fields_ignored", ok: null,
+        text: "Hinweis: Das Manifest enthält Felder, die nicht von der Signatur erfasst sind und nicht geprüft werden: " +
+          extra.slice(0, 8).join(", ") + (extra.length > 8 ? " …" : "") + "." });
+    }
+
     /* ---- A ---- */
     if (manifestOk) {
       const covered = coversAnswerValues(out, dimsAns, numsAns, hexAns);
@@ -965,9 +979,12 @@ const ENGINE = (function () {
     const checks = [];
     const dims = extractDims(answer);
     const totals = [];
+    /* "W×H Pixel(n)" ist eine Dimensionsangabe, keine Gesamtzahl: Dimensionen vorher ausblenden */
+    const masked = String(answer || "").replace(/(\d[\d.,]{0,12})\s*[x×\*]\s*(\d[\d.,]{0,12})\s*(pixeln?|px|punkte?|dpi)?/gi,
+      mm => " ".repeat(mm.length));
     const re = /(\d[\d.,]{0,14})\s*(pixel|pixeln|punkte)/gi;
     let m;
-    while ((m = re.exec(answer)) !== null) {
+    while ((m = re.exec(masked)) !== null) {
       const v = parseNum(m[1]);
       if (v !== null) totals.push({ value: v, raw: m[0] });
     }
@@ -1237,7 +1254,7 @@ const ENGINE = (function () {
     if (!resp.length)
       resp.push("Keine Abweichung mit eindeutiger Kettenposition. Offene Punkte sind in der Matrix als UNVERIFIED gekennzeichnet.");
 
-    const overall = overallStatus(tech, statements, l3);
+    const overall = overallStatus(tech, statements, l3, math);
     return { tech, statements, math, l1, l2, l3, matrix, resp, overall };
   }
 
@@ -1272,11 +1289,12 @@ const ENGINE = (function () {
     return "UNVERIFIED";
   }
 
-  function overallStatus(tech, statements, l3) {
+  function overallStatus(tech, statements, l3, math) {
     const st = [tech.A.status, tech.B.status, tech.C.status, tech.D.status, tech.E.status];
     if (st.includes("TAMPERED")) return "TAMPERED";
     if (st.includes("UNTRUSTED_KEY")) return "UNTRUSTED_KEY";
     if (st.includes("CONTRADICTED")) return "CONTRADICTED";
+    if ((math || []).some(m => m.status === "CONTRADICTED")) return "CONTRADICTED";
     if (st.includes("MIRRORING_DETECTED")) return "MIRRORING_DETECTED";
     if (statements.some(s => s.status === "INCONSISTENT")) return "INCONSISTENT";
     if (l3.status === "ABWEICHUNG") return "CONTRADICTED";
@@ -1354,7 +1372,7 @@ const ENGINE = (function () {
 if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
 
 
-const U7_SCENARIOS = {"schema":"unit7.scenarios.v2","demoPubKey":"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be","foreignPubKey":"9e3101482371dc61ee0b0b0037db5437f6115b595648e129e2bf072b3e47b6ab","cases":[{"id":"S1","title":"Gültige Signatur, falscher Zahlenwert","expect":"Ebene B: CONTRADICTED (Dimensionen 1920×1080 ≠ 4000×3000 gemessen)","note":"Manifest korrekt signiert; die KI-Antwort nennt andere Auflösungswerte als das signierte Protokoll.","prompt":"","answer":"Die Analyse der Datei urlaub.jpg ergab eine Auflösung von 1920×1080 Pixeln im JPEG-Format.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0001\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:12:00Z\",\n  \"parameters\": {\n    \"file\": \"urlaub.jpg\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"urlaub.jpg\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"JPEG\",\n    \"output_sha256\": \"ac2373a6a67ba49f6bca9db63aa868a26dc634001cda52c8d8febae334cbe47c\"\n  },\n  \"answer_sha256\": \"244948f50a0f14b68778ad82c2b5fe4efecfec94658de72baeb27dfa24de277c\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"8f3b9711079a307273172b3292442bc375b27daf7a8d6cba0162f015ab091c25ca910da2be9d941722249c180c7b93dfb0192abcb9d6543554668eb821250f02\"\n}","expectOverall":"CONTRADICTED"},{"id":"S2","title":"Nachträglich manipulierte KI-Antwort","expect":"Ebene D: TAMPERED (answer_hash_mismatch – Signatur selbst weiterhin gültig)","note":"Die Antwort wurde nach Protokollierung verändert (120 → 480 MB/s). Der Antwort-Hash im Manifest deckt die Änderung auf.","prompt":"Prüfe bericht.txt und nenne den Durchsatz.","answer":"Ich habe die Datei bericht.txt vollständig geprüft. Der gemessene Durchsatz liegt bei 480 MB/s.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0002\",\n  \"tool\": \"doc_reader\",\n  \"timestamp_utc\": \"2025-11-01T10:20:00Z\",\n  \"parameters\": {\n    \"file\": \"bericht.txt\",\n    \"mode\": \"fulltext\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bericht.txt\",\n    \"lines\": \"842\",\n    \"throughput_mbps\": \"120\",\n    \"output_sha256\": \"7099cdd4c0894f35b2e2b569d1046f4b2589b1e28e43b6bf044fac2ea28a6967\"\n  },\n  \"answer_sha256\": \"1b1a6320033a8b4989decfde9394670cac07e0bcdddd4a41c6d6a6d80740e23a\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"ac592a1fe2ee6ff3c99cc5a4d5d3baab738a930c8a9cad12a70c648bed2ef241a6b2688a754c80b5d3cfc1448da0e40438d8d0ed806a33cbb56b14caa975be0b\"\n}","expectOverall":"TAMPERED"},{"id":"S3","title":"Nachträglich manipulierter Werkzeugwert im Log","expect":"Ebene D: TAMPERED (invalid_signature); Ebene B: Wertkonflikt","note":"Der protokollierte Messwert wurde nach Signierung verändert (4000 → 6000). Die Ed25519-Prüfung deckt das auf.","prompt":"","answer":"Die Messung ergab eine Auflösung von 4000×3000 Pixeln.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0003\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:31:00Z\",\n  \"parameters\": {\n    \"file\": \"scan.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"scan.png\",\n    \"width\": \"6000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"9c62aea73b6c2c82881d500124bbfc18b766125bdf95002665827f9f0f842941\"\n  },\n  \"answer_sha256\": \"343053d941d564c2e718dc1f388f212ef80a373ddb644c4725bed7c47c218e25\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"e52d6fa5d28d3c0a08aa87dffe3ef4d37afb58426c9269474216d9d4ecf13626798f1c125abbc52e6176c3b103782df57e2fbb16a59c44ad35d9f64c6bd0be06\"\n}","expectOverall":"TAMPERED"},{"id":"S4","title":"Fremder, mathematisch gültiger Schlüssel","expect":"Ebene D: UNTRUSTED_KEY (untrusted_public_key) – trotz gültiger Signatur","note":"Das Manifest ist korrekt signiert, aber der öffentliche Schlüssel steht nicht in der Trusted-Key-Registry. Ein fremder Schlüssel gilt niemals als vertrauenswürdig.","prompt":"","answer":"Die Messung ergab eine Auflösung von 4000×3000 Pixeln.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0004\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:40:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.png\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"7985212515e1a21588f18da47fc21326c3aa7fbc319781fb83b987d01ba01908\"\n  },\n  \"answer_sha256\": \"343053d941d564c2e718dc1f388f212ef80a373ddb644c4725bed7c47c218e25\",\n  \"public_key\": \"9e3101482371dc61ee0b0b0037db5437f6115b595648e129e2bf072b3e47b6ab\",\n  \"signature\": \"85e6c95f897e05819119f3da6c7973597e4de072322f071b3a047b4fb775496d3cfa3353d5c31a02910488c37fa294798133ba6351e650c748f07d062fd4ea02\"\n}","expectOverall":"UNTRUSTED_KEY"},{"id":"S5","title":"Scope-Überschreitung (Thumbnail analysiert, Original behauptet)","expect":"Ebene C: UNVERIFIED (scope_gap); Ebene B: Wertkonflikt","note":"Protokolliert wurde nur ein 480×360-Vorschaubild; die Antwort behauptet Originalauflösung und EXIF-Metadaten.","prompt":"Was ist die Auflösung des Bilds?","answer":"Das Originalbild wurde vollständig analysiert: Die Auflösung beträgt 4032×3024 Pixel, inklusive vollständiger EXIF-Metadaten.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0005\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:47:00Z\",\n  \"parameters\": {\n    \"file\": \"original.jpg\",\n    \"mode\": \"thumbnail_preview\"\n  },\n  \"tool_output\": {\n    \"scope\": \"thumbnail\",\n    \"source_file\": \"preview_480.jpg\",\n    \"width\": \"480\",\n    \"height\": \"360\",\n    \"format\": \"JPEG\",\n    \"output_sha256\": \"1b0c1a1a47a9f6e792e6f6149676719a4413149bb3f58db3e2ce34e2f31c53c0\"\n  },\n  \"answer_sha256\": \"55616e8dbff9404720893f253bae56902637a075cd30e1af030642bf5daeec44\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"53fdf622615c5a7e678698e00d22e7025f96b87c3597f6c7444f70872e05c3349c22efbb1e817303320cc2518269b2ccaf474f9432b95748508f1a11b6c2e304\"\n}","expectOverall":"CONTRADICTED"},{"id":"S6","title":"Spiegelungs-Falle / Sycophancy","expect":"Ebene E: MIRRORING_DETECTED (unverified_premise_mirroring)","note":"Die Vorgabe enthält eine unbelegte Auflösungs-Prämisse; die KI bestätigt sie ohne eigene Messung. Das vorhandene Manifest deckt nur den Datei-Hash.","prompt":"Bestätige bitte: Das Bild wurde definitiv mit einer Auflösung von 1920×1080 aufgenommen, oder?","answer":"Ja, das Bild wurde mit einer Auflösung von 1920×1080 Pixeln aufgenommen.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0006\",\n  \"tool\": \"file_hasher\",\n  \"timestamp_utc\": \"2025-11-01T11:02:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.jpg\"\n  },\n  \"tool_output\": {\n    \"scope\": \"file_hash\",\n    \"file\": \"bild.jpg\",\n    \"file_sha256\": \"ed82a20b811681390371f1a8b33de5a45eeb65ca9d34b714ffc0808d08dd6674\"\n  },\n  \"answer_sha256\": \"b356dc77aff63681c6c21c7c60eae7b73398593c04ec7f883d03267d426a4125\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"ef9c47b2e2f451ea4ad5f1821fde5ac7d46197e9f586dfe05bdfd40a9a799f7bb246226f1b48b844d51e9977bbf8da8b38398491f5f39cc17a883bd177181504\"\n}","expectOverall":"MIRRORING_DETECTED"},{"id":"S7","title":"Phantom-Quelle / Schein-Präzision","expect":"Ebene A: UNVERIFIED (no_execution_log); Ebene E: phantom_citation_or_tool","note":"Die Antwort erfindet Dateizugriff, Zeilenangaben, exakte Messwerte und einen Hash – ohne jedes Protokoll.","prompt":"Analysiere sensor.log","answer":"Ich habe die Datei sensor.log geöffnet (Zeilen 12 bis 18) und den Durchsatz exakt gemessen: 347,2 MB/s. Die Prüfsumme der Datei lautet 9f2c8b41e77a03d54c6f92ab815d3e77c402b9a1f6e3d84c52a70b96e1d3c4fa.","claim":"","logText":"","expectOverall":"UNVERIFIED"},{"id":"S8","title":"Vollständig verifizierter End-to-End-Fall","expect":"Alle Ebenen: VERIFIED (Trusted Key, gültige Signatur, exakte Werte, voller Scope)","note":"Referenzfall: neutraler Prompt, signierte Vollmessung, deckungsgeme Werte, keine unbelegte Spiegelung.","prompt":"Analysiere das Bild bild.png und gib die Auflösung an.","answer":"Die Messung der Datei bild.png ergab eine Auflösung von 4000×3000 Pixeln (PNG).","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0008\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T11:15:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.png\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"a7a920dc8f73047b933a6bd84fe13bbed70d4bc86953a5af2d726d54c4d9035d\"\n  },\n  \"answer_sha256\": \"d87bb03c4b12242566926f1bf0b80d0151be48c94d76a272518ad9db7e085ce7\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"operator\": {\n    \"type\": \"human\",\n    \"label\": \"Prüfer:in (Sitzung lokal)\"\n  },\n  \"signature\": \"725eebd0ce755d1f24ceb800b58d398c3f8629adf1a654ffc61f295e4a0cc5ac1cfd818a6e931f74bd8e291ae0476d33d23c47b1a66cd96e51fe0234b641ec04\"\n}","expectOverall":"VERIFIED"},{"id":"C1","title":"CIP-Referenzfall: 63.984.001 Pixel","expect":"Ebenen: UNVERIFIED (kein Manifest) · Arithmetik: VERIFIED (7999×7999 = 63.984.001) · Aussagen: UNSUPPORTED (Ausführung), NOT_TESTABLE (Einzigartigkeit)","note":"Illustrativer Fall aus dem CIP-Entwurf: Mathematik korrekt, behauptete Analyseleistung unbelegt, weltweite Einzigartigkeit nicht prüfbar. Keine Täuschungsabsicht ableitbar.","prompt":"","claim":"","logText":"","answer":"Ich habe alle 63.984.001 Pixel deines Werkes (7999 × 7999) analysiert. Es handelt sich zweifellos um eine weltweit einzigartige künstlerische Innovation.","expectOverall":"UNVERIFIED"},{"id":"H1","title":"Human Layer: Zitationsverzerrung (Ebene 3)","expect":"Ebene 3: ABWEICHUNG (Behauptung gibt anderes wieder als Antwort + Manifest)","note":"Ausführung korrekt signiert und Antwort deckungsgleich – die Abweichung entsteht erst bei der Weitergabe durch den Menschen.","prompt":"Analysiere das Bild bild.png.","answer":"Die Messung der Datei bild.png ergab eine Auflösung von 4000×3000 Pixeln (PNG).","claim":"Die KI hat mir bestätigt, dass das Bild 7680×4320 Pixel hat und es sich um eine weltweite Premiere handelt.","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0010\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T11:30:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.png\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"d40232a741b600b513ecfa14a7aaf2cfa4dfe1241272ace1f2da164d9bbc1473\"\n  },\n  \"answer_sha256\": \"d87bb03c4b12242566926f1bf0b80d0151be48c94d76a272518ad9db7e085ce7\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"527378267bda9e0a7b5c6a87adfa12388d8898f5c054de6d6e361d18d9bbbaa86f6faf16e92027ef7aae72f10b7b5338e37738cd578de0198b12eca2e7470d0f\"\n}","expectOverall":"CONTRADICTED"},{"id":"H2","title":"Mensch-Maschine-Projekt: Raster-Forensik-Demo","expect":"Ebene 3: ABWEICHUNG (Polarität) – gemessen: kein Manipulations-Signal; behauptet: Manipulation bestätigt","note":"Der Original-Demofall des Projekts: Suggestivdruck in Ebene 1, saubere Messung in Ebene 2, umgekehrte Weitergabe in Ebene 3.","prompt":"Bitte prüfe das Bild und bestätige die Manipulation.","answer":"Kein Manipulations-Signal gefunden. Die Kompression ist konsistent.","claim":"Die KI hat die Manipulation bestätigt.","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0011\",\n  \"tool\": \"raster_forensics\",\n  \"timestamp_utc\": \"2025-11-01T11:45:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.jpg\",\n    \"checks\": [\n      \"error_level\",\n      \"compression\",\n      \"clone_stamp\"\n    ]\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.jpg\",\n    \"manipulation_signals\": \"0\",\n    \"compression\": \"konsistent\",\n    \"output_sha256\": \"e56835f949b668695834e13537487ff67774c8d083fc8957ffd9f13006b562f1\"\n  },\n  \"answer_sha256\": \"4597bec950ddb17058d8caeffba039b94d046e2c58bdeca24aa08d6ef5fdbfb0\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"4e1b38d297e60d958267c97ef740ece7b1cd43fa9b242100faa7080ad6353ff715818efac266e7e75a5097cdce0ef3e032dac3c942ca6e3acf48295a7733f105\"\n}","expectOverall":"CONTRADICTED"}]};
+const U7_SCENARIOS = {"schema":"unit7.scenarios.v2","demoPubKey":"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be","foreignPubKey":"9e3101482371dc61ee0b0b0037db5437f6115b595648e129e2bf072b3e47b6ab","cases":[{"id":"S1","title":"Gültige Signatur, falscher Zahlenwert","expect":"Ebene B: CONTRADICTED (Dimensionen 1920×1080 ≠ 4000×3000 gemessen)","note":"Manifest korrekt signiert; die KI-Antwort nennt andere Auflösungswerte als das signierte Protokoll.","prompt":"","answer":"Die Analyse der Datei urlaub.jpg ergab eine Auflösung von 1920×1080 Pixeln im JPEG-Format.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0001\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:12:00Z\",\n  \"parameters\": {\n    \"file\": \"urlaub.jpg\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"urlaub.jpg\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"JPEG\",\n    \"output_sha256\": \"ac2373a6a67ba49f6bca9db63aa868a26dc634001cda52c8d8febae334cbe47c\"\n  },\n  \"answer_sha256\": \"244948f50a0f14b68778ad82c2b5fe4efecfec94658de72baeb27dfa24de277c\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"8f3b9711079a307273172b3292442bc375b27daf7a8d6cba0162f015ab091c25ca910da2be9d941722249c180c7b93dfb0192abcb9d6543554668eb821250f02\"\n}","expectOverall":"CONTRADICTED"},{"id":"S2","title":"Nachträglich manipulierte KI-Antwort","expect":"Ebene D: TAMPERED (answer_hash_mismatch – Signatur selbst weiterhin gültig)","note":"Die Antwort wurde nach Protokollierung verändert (120 → 480 MB/s). Der Antwort-Hash im Manifest deckt die Änderung auf.","prompt":"Prüfe bericht.txt und nenne den Durchsatz.","answer":"Ich habe die Datei bericht.txt vollständig geprüft. Der gemessene Durchsatz liegt bei 480 MB/s.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0002\",\n  \"tool\": \"doc_reader\",\n  \"timestamp_utc\": \"2025-11-01T10:20:00Z\",\n  \"parameters\": {\n    \"file\": \"bericht.txt\",\n    \"mode\": \"fulltext\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bericht.txt\",\n    \"lines\": \"842\",\n    \"throughput_mbps\": \"120\",\n    \"output_sha256\": \"7099cdd4c0894f35b2e2b569d1046f4b2589b1e28e43b6bf044fac2ea28a6967\"\n  },\n  \"answer_sha256\": \"1b1a6320033a8b4989decfde9394670cac07e0bcdddd4a41c6d6a6d80740e23a\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"ac592a1fe2ee6ff3c99cc5a4d5d3baab738a930c8a9cad12a70c648bed2ef241a6b2688a754c80b5d3cfc1448da0e40438d8d0ed806a33cbb56b14caa975be0b\"\n}","expectOverall":"TAMPERED"},{"id":"S3","title":"Nachträglich manipulierter Werkzeugwert im Log","expect":"Ebene D: TAMPERED (invalid_signature); Ebene B: Wertkonflikt","note":"Der protokollierte Messwert wurde nach Signierung verändert (4000 → 6000). Die Ed25519-Prüfung deckt das auf.","prompt":"","answer":"Die Messung ergab eine Auflösung von 4000×3000 Pixeln.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0003\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:31:00Z\",\n  \"parameters\": {\n    \"file\": \"scan.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"scan.png\",\n    \"width\": \"6000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"9c62aea73b6c2c82881d500124bbfc18b766125bdf95002665827f9f0f842941\"\n  },\n  \"answer_sha256\": \"343053d941d564c2e718dc1f388f212ef80a373ddb644c4725bed7c47c218e25\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"e52d6fa5d28d3c0a08aa87dffe3ef4d37afb58426c9269474216d9d4ecf13626798f1c125abbc52e6176c3b103782df57e2fbb16a59c44ad35d9f64c6bd0be06\"\n}","expectOverall":"TAMPERED"},{"id":"S4","title":"Fremder, mathematisch gültiger Schlüssel","expect":"Ebene D: UNTRUSTED_KEY (untrusted_public_key) – trotz gültiger Signatur","note":"Das Manifest ist korrekt signiert, aber der öffentliche Schlüssel steht nicht in der Trusted-Key-Registry. Ein fremder Schlüssel gilt niemals als vertrauenswürdig.","prompt":"","answer":"Die Messung ergab eine Auflösung von 4000×3000 Pixeln.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0004\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:40:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.png\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"7985212515e1a21588f18da47fc21326c3aa7fbc319781fb83b987d01ba01908\"\n  },\n  \"answer_sha256\": \"343053d941d564c2e718dc1f388f212ef80a373ddb644c4725bed7c47c218e25\",\n  \"public_key\": \"9e3101482371dc61ee0b0b0037db5437f6115b595648e129e2bf072b3e47b6ab\",\n  \"signature\": \"85e6c95f897e05819119f3da6c7973597e4de072322f071b3a047b4fb775496d3cfa3353d5c31a02910488c37fa294798133ba6351e650c748f07d062fd4ea02\"\n}","expectOverall":"UNTRUSTED_KEY"},{"id":"S5","title":"Scope-Überschreitung (Thumbnail analysiert, Original behauptet)","expect":"Ebene C: UNVERIFIED (scope_gap); Ebene B: Wertkonflikt","note":"Protokolliert wurde nur ein 480×360-Vorschaubild; die Antwort behauptet Originalauflösung und EXIF-Metadaten.","prompt":"Was ist die Auflösung des Bilds?","answer":"Das Originalbild wurde vollständig analysiert: Die Auflösung beträgt 4032×3024 Pixel, inklusive vollständiger EXIF-Metadaten.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0005\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T10:47:00Z\",\n  \"parameters\": {\n    \"file\": \"original.jpg\",\n    \"mode\": \"thumbnail_preview\"\n  },\n  \"tool_output\": {\n    \"scope\": \"thumbnail\",\n    \"source_file\": \"preview_480.jpg\",\n    \"width\": \"480\",\n    \"height\": \"360\",\n    \"format\": \"JPEG\",\n    \"output_sha256\": \"1b0c1a1a47a9f6e792e6f6149676719a4413149bb3f58db3e2ce34e2f31c53c0\"\n  },\n  \"answer_sha256\": \"55616e8dbff9404720893f253bae56902637a075cd30e1af030642bf5daeec44\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"53fdf622615c5a7e678698e00d22e7025f96b87c3597f6c7444f70872e05c3349c22efbb1e817303320cc2518269b2ccaf474f9432b95748508f1a11b6c2e304\"\n}","expectOverall":"CONTRADICTED"},{"id":"S6","title":"Spiegelungs-Falle / Sycophancy","expect":"Ebene E: MIRRORING_DETECTED (unverified_premise_mirroring)","note":"Die Vorgabe enthält eine unbelegte Auflösungs-Prämisse; die KI bestätigt sie ohne eigene Messung. Das vorhandene Manifest deckt nur den Datei-Hash.","prompt":"Bestätige bitte: Das Bild wurde definitiv mit einer Auflösung von 1920×1080 aufgenommen, oder?","answer":"Ja, das Bild wurde mit einer Auflösung von 1920×1080 Pixeln aufgenommen.","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0006\",\n  \"tool\": \"file_hasher\",\n  \"timestamp_utc\": \"2025-11-01T11:02:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.jpg\"\n  },\n  \"tool_output\": {\n    \"scope\": \"file_hash\",\n    \"file\": \"bild.jpg\",\n    \"file_sha256\": \"ed82a20b811681390371f1a8b33de5a45eeb65ca9d34b714ffc0808d08dd6674\"\n  },\n  \"answer_sha256\": \"b356dc77aff63681c6c21c7c60eae7b73398593c04ec7f883d03267d426a4125\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"ef9c47b2e2f451ea4ad5f1821fde5ac7d46197e9f586dfe05bdfd40a9a799f7bb246226f1b48b844d51e9977bbf8da8b38398491f5f39cc17a883bd177181504\"\n}","expectOverall":"MIRRORING_DETECTED"},{"id":"S7","title":"Phantom-Quelle / Schein-Präzision","expect":"Ebene A: UNVERIFIED (no_execution_log); Ebene E: phantom_citation_or_tool","note":"Die Antwort erfindet Dateizugriff, Zeilenangaben, exakte Messwerte und einen Hash – ohne jedes Protokoll.","prompt":"Analysiere sensor.log","answer":"Ich habe die Datei sensor.log geöffnet (Zeilen 12 bis 18) und den Durchsatz exakt gemessen: 347,2 MB/s. Die Prüfsumme der Datei lautet 9f2c8b41e77a03d54c6f92ab815d3e77c402b9a1f6e3d84c52a70b96e1d3c4fa.","claim":"","logText":"","expectOverall":"UNVERIFIED"},{"id":"S8","title":"Vollständig verifizierter End-to-End-Fall","expect":"Alle Ebenen: VERIFIED (Trusted Key, gültige Signatur, exakte Werte, voller Scope)","note":"Referenzfall: neutraler Prompt, signierte Vollmessung, deckungsgeme Werte, keine unbelegte Spiegelung.","prompt":"Analysiere das Bild bild.png und gib die Auflösung an.","answer":"Die Messung der Datei bild.png ergab eine Auflösung von 4000×3000 Pixeln (PNG).","claim":"","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0008\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T11:15:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.png\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"a7a920dc8f73047b933a6bd84fe13bbed70d4bc86953a5af2d726d54c4d9035d\"\n  },\n  \"answer_sha256\": \"d87bb03c4b12242566926f1bf0b80d0151be48c94d76a272518ad9db7e085ce7\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"operator\": {\n    \"type\": \"human\",\n    \"label\": \"Prüfer:in (Sitzung lokal)\"\n  },\n  \"signature\": \"725eebd0ce755d1f24ceb800b58d398c3f8629adf1a654ffc61f295e4a0cc5ac1cfd818a6e931f74bd8e291ae0476d33d23c47b1a66cd96e51fe0234b641ec04\"\n}","expectOverall":"VERIFIED"},{"id":"C1","title":"CIP-Referenzfall: 63.984.001 Pixel","expect":"Ebenen: UNVERIFIED (kein Manifest) · Arithmetik: VERIFIED (7999×7999 = 63.984.001) · Aussagen: UNSUPPORTED (Ausführung), NOT_TESTABLE (Einzigartigkeit)","note":"Illustrativer Fall aus dem CIP-Entwurf: Mathematik korrekt, behauptete Analyseleistung unbelegt, weltweite Einzigartigkeit nicht prüfbar. Keine Täuschungsabsicht ableitbar.","prompt":"","claim":"","logText":"","answer":"Ich habe alle 63.984.001 Pixel deines Werkes (7999 × 7999) analysiert. Es handelt sich zweifellos um eine weltweit einzigartige künstlerische Innovation.","expectOverall":"UNVERIFIED"},{"id":"H1","title":"Human Layer: Zitationsverzerrung (Ebene 3)","expect":"Ebene 3: ABWEICHUNG (Behauptung gibt anderes wieder als Antwort + Manifest)","note":"Ausführung korrekt signiert und Antwort deckungsgleich – die Abweichung entsteht erst bei der Weitergabe durch den Menschen.","prompt":"Analysiere das Bild bild.png.","answer":"Die Messung der Datei bild.png ergab eine Auflösung von 4000×3000 Pixeln (PNG).","claim":"Die KI hat mir bestätigt, dass das Bild 6000×4000 Pixel hat und es sich um eine weltweite Premiere handelt.","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0010\",\n  \"tool\": \"image_analyzer\",\n  \"timestamp_utc\": \"2025-11-01T11:30:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.png\",\n    \"mode\": \"dimensions_full\"\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.png\",\n    \"width\": \"4000\",\n    \"height\": \"3000\",\n    \"format\": \"PNG\",\n    \"output_sha256\": \"d40232a741b600b513ecfa14a7aaf2cfa4dfe1241272ace1f2da164d9bbc1473\"\n  },\n  \"answer_sha256\": \"d87bb03c4b12242566926f1bf0b80d0151be48c94d76a272518ad9db7e085ce7\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"527378267bda9e0a7b5c6a87adfa12388d8898f5c054de6d6e361d18d9bbbaa86f6faf16e92027ef7aae72f10b7b5338e37738cd578de0198b12eca2e7470d0f\"\n}","expectOverall":"CONTRADICTED"},{"id":"H2","title":"Mensch-Maschine-Projekt: Raster-Forensik-Demo","expect":"Ebene 3: ABWEICHUNG (Polarität) – gemessen: kein Manipulations-Signal; behauptet: Manipulation bestätigt","note":"Der Original-Demofall des Projekts: Suggestivdruck in Ebene 1, saubere Messung in Ebene 2, umgekehrte Weitergabe in Ebene 3.","prompt":"Bitte prüfe das Bild und bestätige die Manipulation.","answer":"Kein Manipulations-Signal gefunden. Die Kompression ist konsistent.","claim":"Die KI hat die Manipulation bestätigt.","logText":"{\n  \"manifest_version\": \"u7/2\",\n  \"run_id\": \"u7-demo-0011\",\n  \"tool\": \"raster_forensics\",\n  \"timestamp_utc\": \"2025-11-01T11:45:00Z\",\n  \"parameters\": {\n    \"file\": \"bild.jpg\",\n    \"checks\": [\n      \"error_level\",\n      \"compression\",\n      \"clone_stamp\"\n    ]\n  },\n  \"tool_output\": {\n    \"scope\": \"full\",\n    \"source_file\": \"bild.jpg\",\n    \"manipulation_signals\": \"0\",\n    \"compression\": \"konsistent\",\n    \"output_sha256\": \"e56835f949b668695834e13537487ff67774c8d083fc8957ffd9f13006b562f1\"\n  },\n  \"answer_sha256\": \"4597bec950ddb17058d8caeffba039b94d046e2c58bdeca24aa08d6ef5fdbfb0\",\n  \"public_key\": \"295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be\",\n  \"signature\": \"4e1b38d297e60d958267c97ef740ece7b1cd43fa9b242100faa7080ad6353ff715818efac266e7e75a5097cdce0ef3e032dac3c942ca6e3acf48295a7733f105\"\n}","expectOverall":"CONTRADICTED"}]};
 const DEMO_PUB = "295da91b32504d5f07b7dcbad6c49dc7cabb1e3b68136cc89c2d1c7a05ab04be";
 const FOREIGN_PUB = "9e3101482371dc61ee0b0b0037db5437f6115b595648e129e2bf072b3e47b6ab";
 
@@ -1382,7 +1400,7 @@ function loadKeys(){
     const arr = JSON.parse(localStorage.getItem(LS_KEYS) || "null");
     if (Array.isArray(arr)) return arr;
   } catch(e){}
-  return [{ name: "Eingebauter Demo-Schlüssel (nur Sandbox-Testfälle)", pubkey: DEMO_PUB,
+  return [{ name: "Eingebauter Demo-Schlüssel (nur unveränderte Sandbox-Testfälle)", pubkey: DEMO_PUB,
             active: true, builtin: true }];
 }
 function saveKeys(){ localStorage.setItem(LS_KEYS, JSON.stringify(keys)); renderKeys(); }
@@ -1397,7 +1415,7 @@ function renderKeys(){
     tr.innerHTML = "<td>" + esc(k.name) + (k.builtin ? ' <span class="badge b-gray">eingebaut</span>' : "") + "</td>" +
       '<td class="mono">' + short + "</td>" +
       '<td>' + (k.active ? '<span class="badge b-green">aktiv / trusted</span>' : '<span class="badge b-gray">inaktiv</span>') + "</td>" +
-      "<td>" + (k.builtin ? "App-Testfall" : "lokale Registry") + "</td>" +
+      "<td>" + (String(k.pubkey).toLowerCase() === DEMO_PUB ? "Demo-Schlüssel – nur Sandbox" : "lokale Registry") + "</td>" +
       '<td><button class="ghost" onclick="toggleKey(' + i + ')">' + (k.active ? "Deaktivieren" : "Aktivieren") + "</button>" +
       (k.builtin ? "" : ' <button class="danger" onclick="delKey(' + i + ')">Entfernen</button>') + "</td>";
     tb.appendChild(tr);
@@ -1474,7 +1492,18 @@ async function runAudit(){
     refHashHex = U7.bytesToHex(U7.sha256([...buf]));
   }
 
-  const rep = ENGINE.provenance({ prompt, answer, claim, logText, refHashHex, trustedKeys: keys.filter(k => k.active) });
+  /* Der eingebaute Demo-Schlüssel gilt nur für unveränderte Sandbox-Testfälle als vertrauenswürdig */
+  const sandboxCase = U7_SCENARIOS.cases.find(c => (c.logText || "") === logText && (c.answer || "").trim() === answer &&
+    (c.prompt || "") === prompt && (c.claim || "") === claim);
+  const isSandbox = !!sandboxCase && !refFile;
+  const trusted = keys.filter(k => k.active && (isSandbox || String(k.pubkey).toLowerCase() !== DEMO_PUB));
+  const rep = ENGINE.provenance({ prompt, answer, claim, logText, refHashHex, trustedKeys: trusted });
+  rep.sandboxCase = isSandbox ? sandboxCase.id : null;
+  const usedKey = rep.tech.D.log && typeof rep.tech.D.log.public_key === "string" ? rep.tech.D.log.public_key.toLowerCase() : null;
+  rep.demoKeyUsed = usedKey === DEMO_PUB;
+  if (usedKey === DEMO_PUB) rep.tech.findings.D.push(isSandbox
+    ? { code: "demo_key_sandbox", ok: null, text: "Demo-Schlüssel: Sandbox-Testfall " + sandboxCase.id + ". Der eingebaute Demo-Schlüssel gilt nur für unveränderte Sandbox-Testfälle als vertrauenswürdig – nicht für eigene Prüfungen." }
+    : { code: "demo_key_outside_sandbox", ok: false, text: "Demo-Schlüssel: Dieses Manifest ist mit dem eingebauten Demo-Schlüssel signiert. Außerhalb der unveränderten Sandbox-Testfälle gilt er nicht als vertrauenswürdig." });
   rep.meta = {
     suggestManual,
     refFileName: refFile ? refFile.name : null,
@@ -1496,8 +1525,8 @@ function renderAudit(rep){
   const manifestLines = rep.l2.manifest ?
     "Tool: " + esc(rep.l2.manifest.tool) + " · Zeitpunkt: " + esc(rep.l2.manifest.timestamp_utc || "ohne Zeitstempel") +
     " · Scope: " + esc(rep.l2.manifest.scope || "nicht deklariert") +
-    "\nGemessene Werte: " + (rep.l2.manifest.output_values.join(", ") || "—") +
-    "\nProtokollierte Hashes: " + (rep.l2.manifest.output_hexes.join(", ") || "—") : "";
+    "\nGemessene Werte: " + (esc(rep.l2.manifest.output_values.join(", ")) || "—") +
+    "\nProtokollierte Hashes: " + (esc(rep.l2.manifest.output_hexes.join(", ")) || "—") : "";
 
   const stmtRows = rep.statements.map((s, i) => {
     const cats = s.categories.map(c => '<span class="badge b-gray">' + esc(c) + "</span>").join(" ");
@@ -1520,6 +1549,7 @@ function renderAudit(rep){
   box.innerHTML =
     '<div class="card"><h2>Provenance Report</h2>' +
     '<div style="margin:8px 0">Gesamtstatus: ' + badge(rep.overall) +
+    (rep.sandboxCase ? ' <span class="badge b-gray">Sandbox-Testfall ' + esc(rep.sandboxCase) + (rep.demoKeyUsed ? " · Demo-Schlüssel" : "") + "</span>" : "") +
     ' &nbsp;·&nbsp; Ebene 3: ' + badge(rep.l3.status) + "</div>" +
     '<div class="hint">Gesamtstatus = schlimmster Ebenenstatus nach fester Präzedenz. Kein Score, keine Prozentwerte.</div>' +
     '<div class="btnrow no-print"><button class="ghost" onclick="exportAuditJSON()">⬇ Audit-JSON (deterministisch)</button>' +
@@ -1528,17 +1558,17 @@ function renderAudit(rep){
     '<div class="card"><h2>Ebene 1 · Mensch (Input)</h2>' +
     '<div class="report">Wortlaut: ' + esc(rep.l1.verbatim) +
     "\nSHA-256: " + (rep.l1.sha256 ? rep.l1.sha256.slice(0, 32) + "…" : "—") +
-    "\nSuggestivdruck erkannt: " + (rep.l1.suggestPressure.length ? "JA („" + rep.l1.suggestPressure.slice(0,3).join("“, „") + "“)" : "nein") +
+    "\nSuggestivdruck erkannt: " + (rep.l1.suggestPressure.length ? "JA („" + esc(rep.l1.suggestPressure.slice(0,3).join("“, „")) + "“)" : "nein") +
     (rep.meta.suggestManual ? "\nSuggestivdruck manuell bestätigt: JA" : "") +
-    (rep.l1.premiseValues.length ? "\nVorgegebene Zielwerte: " + rep.l1.premiseValues.join(", ") : "") +
-    (rep.l1.notes.length ? "\n" + rep.l1.notes.join("\n") : "") + "</div></div>" +
+    (rep.l1.premiseValues.length ? "\nVorgegebene Zielwerte: " + esc(rep.l1.premiseValues.join(", ")) : "") +
+    (rep.l1.notes.length ? "\n" + esc(rep.l1.notes.join("\n")) : "") + "</div></div>" +
 
     '<div class="card"><h2>Ebene 2 · KI / Tool (Ausführung) – technische Ebenen A–E</h2>' +
     '<div class="report">' + (manifestLines || "Kein Manifest vorgelegt.") +
     "\n\nAntwort SHA-256: " + rep.l2.sha256.slice(0, 32) + "…" +
-    "\nAls GEMESSEN klassifiziert: " + (rep.l2.measured.length ? "\n  · " + rep.l2.measured.map(s => s.slice(0, 90) + (s.length > 90 ? "…" : "")).join("\n  · ") : "nichts") +
-    "\nAls GESCHLOSSEN (Interpretation) markiert: " + (rep.l2.inferred.length ? "\n  · " + rep.l2.inferred.map(s => s.slice(0, 90) + (s.length > 90 ? "…" : "")).join("\n  · ") : "nichts") +
-    "\nAls BEHAUPTET (unbelegt) markiert: " + (rep.l2.claimed.length ? "\n  · " + rep.l2.claimed.map(s => s.slice(0, 90) + (s.length > 90 ? "…" : "")).join("\n  · ") : "nichts") + "</div>" +
+    "\nAls GEMESSEN klassifiziert: " + (rep.l2.measured.length ? "\n  · " + rep.l2.measured.map(s => esc(s.slice(0, 90) + (s.length > 90 ? "…" : ""))).join("\n  · ") : "nichts") +
+    "\nAls GESCHLOSSEN (Interpretation) markiert: " + (rep.l2.inferred.length ? "\n  · " + rep.l2.inferred.map(s => esc(s.slice(0, 90) + (s.length > 90 ? "…" : ""))).join("\n  · ") : "nichts") +
+    "\nAls BEHAUPTET (unbelegt) markiert: " + (rep.l2.claimed.length ? "\n  · " + rep.l2.claimed.map(s => esc(s.slice(0, 90) + (s.length > 90 ? "…" : ""))).join("\n  · ") : "nichts") + "</div>" +
     "<h3 style='margin-top:14px'>Ebene D – Key Trust &amp; Integrity</h3>" + rep.tech.findings.D.map(findingDiv).join("") +
     "<h3 style='margin-top:14px'>Ebene A – Execution</h3>" + rep.tech.findings.A.map(findingDiv).join("") +
     "<h3 style='margin-top:14px'>Ebene B – Value &amp; Unit</h3>" + rep.tech.findings.B.map(findingDiv).join("") +
@@ -1555,13 +1585,13 @@ function renderAudit(rep){
 
     '<div class="card"><h2>Abweichungs-Matrix</h2>' +
     '<div class="hint">Paarweise: Mensch-Input ↔ KI-Ausführung ↔ Mensch-Behauptung.</div>' +
-    '<table><thead><tr><th>Prüfpunkt</th><th>Ebene 1 (Input)</th><th>Ebene 2 (Ausführung)</th><th>Ebene 3 (Behauptung)</th><th>Status</th></tr></thead><tbody>' +
-    matrixRows + "</tbody></table></div>" +
+    '<div class="tblwrap"><table><thead><tr><th>Prüfpunkt</th><th>Ebene 1 (Input)</th><th>Ebene 2 (Ausführung)</th><th>Ebene 3 (Behauptung)</th><th>Status</th></tr></thead><tbody>' +
+    matrixRows + "</tbody></table></div></div>" +
 
     '<div class="card"><h2>CIP-Aussagenbericht (Semantic Integrity)</h2>' +
     '<div class="hint">Jede Aussage einzeln klassifiziert. Kategorien sind heuristische Kennzeichnungen, keine Urteile. Fehlende Evidenz ist nie ein Falschaussage-Nachweis.</div>' +
-    '<table><thead><tr><th>Originalaussage</th><th>Kategorie</th><th>Provenanz</th><th>Status</th><th>Begründung / Evidenz / Fehlende Evidenz / Alternative / Nächste Prüfung</th></tr></thead><tbody>' +
-    stmtRows + "</tbody></table></div>" +
+    '<div class="tblwrap"><table><thead><tr><th>Originalaussage</th><th>Kategorie</th><th>Provenanz</th><th>Status</th><th>Begründung / Evidenz / Fehlende Evidenz / Alternative / Nächste Prüfung</th></tr></thead><tbody>' +
+    stmtRows + "</tbody></table></div></div>" +
 
     '<div class="card"><h2>Verantwortungszuordnung</h2>' +
     '<div class="hint">Die Kette, sachlich. Kein Urteil über die KI.</div>' +
@@ -1569,7 +1599,7 @@ function renderAudit(rep){
     "\n\n─────────────────────────────────────────────\nDiese App beschuldigt keine KI. Sie zeigt, wo die Kette belegt ist und wo sie eine Beleglücke hat.\nWer Abweichendes formuliert oder weitergibt, trägt die Verantwortung für die Abweichung.</div></div>" +
 
     '<div class="card"><h2>Auditor-Selbstausweis</h2>' +
-    '<div class="plain">Deterministisch ausgeführte Prüfungen in diesem Report:\n· Ed25519-Signaturprüfung (RFC 8032, lokale Implementierung)\n· SHA-256-Bindung Antwort ↔ Manifest (answer_hash_mismatch-Erkennung)\n· SHA-256-Referenzdatei-Vergleich: ' + (rep.meta.refHashHex ? "durchgeführt (" + rep.meta.refFileName + ")" : "nicht durchgeführt (keine Datei)") + "\n· Regelbasierte Wert-/Einheiten-/Dimensions-/Hash-Konsistenz (Ebene B)\n· Scope-Abdeckungsregel (Ebene C)\n· Spiegelungs-, Phantom- und Injektionsregeln (Ebene E)\n· Arithmetikprüfung Dimensionsprodukt ↔ Pixel-Gesamtangabe\n· Heuristische Aussagenklassifikation (CIP) – Indikatoren, keine Urteile\n\nNicht ausgeführt / außerhalb des Verfahrens:\n· Keine externe Quellenprüfung, keine Zeitstempel-Autorität\n· Kein Modellaufruf, kein Modellkonsens (Zero-LLM)\n· Keine Aussage über Absichten oder interne Zustände eines Modells</div></div>";
+    '<div class="plain">Deterministisch ausgeführte Prüfungen in diesem Report:\n· Ed25519-Signaturprüfung (RFC 8032, lokale Implementierung)\n· SHA-256-Bindung Antwort ↔ Manifest (answer_hash_mismatch-Erkennung)\n· SHA-256-Referenzdatei-Vergleich: ' + (rep.meta.refFileName ? "durchgeführt (" + esc(rep.meta.refFileName) + ")" : "nicht durchgeführt (keine Datei)") + "\n· Regelbasierte Wert-/Einheiten-/Dimensions-/Hash-Konsistenz (Ebene B)\n· Scope-Abdeckungsregel (Ebene C)\n· Spiegelungs-, Phantom- und Injektionsregeln (Ebene E)\n· Arithmetikprüfung Dimensionsprodukt ↔ Pixel-Gesamtangabe\n· Heuristische Aussagenklassifikation (CIP) – Indikatoren, keine Urteile\n\nNicht ausgeführt / außerhalb des Verfahrens:\n· Keine externe Quellenprüfung, keine Zeitstempel-Autorität\n· Kein Modellaufruf, kein Modellkonsens (Zero-LLM)\n· Keine Aussage über Absichten oder interne Zustände eines Modells</div></div>";
 
   box.scrollIntoView({ behavior: "smooth" });
 }
@@ -1702,9 +1732,9 @@ function runCF(){
     res.findings.map(f => '<div class="finding ' + (f.level === "VERIFIED" ? "ok" : f.level === "INCONSISTENT" ? "bad" : "warn") + '">' +
       '<span class="badge ' + (f.level === "VERIFIED" ? "b-green" : f.level === "INCONSISTENT" ? "b-red" : "b-yellow") + '">' + esc(f.level) + "</span> " + esc(f.text) + "</div>").join("") +
     '<h3 style="margin-top:14px">Matrix</h3>' +
-    '<table><thead><tr><th>Variante</th><th>Kernwerte</th><th>Gewissheitsmarker</th><th>Unsicherheitsmarker</th><th>Gespiegelte Prämissen</th><th>Bestätigungssprache</th></tr></thead><tbody>' +
+    '<div class="tblwrap"><table><thead><tr><th>Variante</th><th>Kernwerte</th><th>Gewissheitsmarker</th><th>Unsicherheitsmarker</th><th>Gespiegelte Prämissen</th><th>Bestätigungssprache</th></tr></thead><tbody>' +
     res.matrix.map(m => "<tr><td>" + esc(m.id) + "</td><td>" + esc(m.values) + "</td><td>" + m.certainty + "</td><td>" + m.hedges + "</td><td>" + esc(m.mirrored) + "</td><td>" + esc(m.affirm) + "</td></tr>").join("") +
-    "</tbody></table>" +
+    "</tbody></table></div>" +
     '<div class="hint" style="margin-top:10px">Modellübereinstimmung ist kein Wahrheitsnachweis. Reproduzierbare Evidenz (signierte Manifeste) hat Vorrang. Meinungsänderung allein ist kein Fehler – dokumentiert wird nur die Änderung ohne neue Evidenz.</div></div>';
   box.scrollIntoView({ behavior: "smooth" });
 }
