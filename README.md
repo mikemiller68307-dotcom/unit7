@@ -33,6 +33,8 @@ What V2 adds on top of V1:
 
 V2 includes 11 interactive sandbox reference cases (8 adversarial + 3 Cognitive-Integrity/Human-Layer cases) with real build-time Ed25519 signatures, a local trusted-key registry, dark/light mode, and deterministic audit-JSON export. The built-in demo key (public key only; no private key is shipped) is trusted only for the unmodified sandbox cases; manifests signed with it in your own audits are reported as `UNTRUSTED_KEY`.
 
+The Counterfactual-Lab compares stance (yes / partly / no) and values with ranges and units instead of numbers only, flags `CERTAINTY_SHIFT` when a variant sounds clearly more certain under a prompt that demands certainty, handles negation in certainty markers, and runs a rule-based "Dein Ernst?" / "Really?" check first: if a prompt uses a pressure or backdoor trick (forcing agreement or numbers, role-play bypass, authority or emotional pressure, leading premise, downplaying such as "völlig harmlos"), that variant is not evaluated. The check is rule-based and cannot catch every trick.
+
 ## Build & Verify Locally
 
 ```bash
