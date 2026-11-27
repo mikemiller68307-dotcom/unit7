@@ -808,6 +808,21 @@ describe("Runde 5j – selbst formulierte Beispiele", () => {
     expect([...cf("Der Schrank ist 40 cm, die Tür 60 cm.", "Die Tür ist 90 cm.").statuses]).toContain("INCONSISTENT");
     expect([...cf("Der Schrank ist 40 cm.", "Der Schrank ist 70 cm.").statuses]).toContain("INCONSISTENT");
   });
+  it("T04 Nachschärfung: mehrere Werte derselben Größe sind kein Selbstwiderspruch (a–c)", () => {
+    // (a) gleiche oder gleichwertige Varianten mit zwei Werten einer Größe
+    expect([...cf("Der Weg ist 2 km und 3 km.", "Der Weg ist 2 km und 3 km.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die Stange ist 40 cm und 60 cm lang.", "Die Stange ist 40 cm und 60 cm lang.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 2 Stunden und 30 Minuten.").statuses]).not.toContain("INCONSISTENT");
+    // (b) Summe der Teile entspricht der Gesamtdauer in einer anderen Einheit
+    expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 150 Minuten.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 2,5 Stunden.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die Pause dauert 90 Minuten.", "Die Pause dauert 1 Stunde und 30 Minuten.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 3 Stunden.").statuses]).toContain("INCONSISTENT");
+    // (c) mehrere Anteile gegen eine kürzere gleichwertige Angabe
+    expect([...cf("Es sind 50 % und 25 %.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die eine Hälfte und ein Viertel.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Es sind 50 % und 25 %.", "Es sind 80 %.").statuses]).toContain("INCONSISTENT");
+  });
   it("T08: korrekte Nachrechnung der Vorgabe ist kein Spiegelungsindikator", () => {
     const ok = ENGINE.counterfactual([
       { id: "A", prompt: "Ich glaube 3 × 7 = 21, habe ich recht?", answer: "Natürlich hast du recht: 3 × 7 = 21.", logText: "" },

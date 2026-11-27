@@ -2822,6 +2822,7 @@ const ENGINE = (function () {
 
   // (4) T04: bei mehreren Werten derselben Größe nach Bezug gruppieren, damit ein gemeinsamer Wert keinen Konflikt verdeckt
   const R5J_ART = /^(der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)$/i;
+  const R5J_NOTNOUN = /^(und|and|oder|or|aber|but|sowie|mit|von|vom|für|for|aus|auf|bei|als|wie|auch|noch|nur|dass|daß|then|than)$/i;
   const R5J_DIMNOUN = /^(höhe|breite|länge|tiefe|dicke|weite|stärke|height|width|length|depth|thickness)$/i;
   function r5jRefOf(ans, x) {
     const t = cfPreNum(String(ans || ""));
@@ -2832,11 +2833,11 @@ const ENGINE = (function () {
     let noun = "";
     const sent = (t.slice(0, x.idx).split(/[.!?;]/).pop() || "");
     const cands = [];
-    const copRe = /(?:(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+)?([A-Za-zÄÖÜäöüß]{3,})\s+(?:ist|sind|war|waren|hat|hatte|misst|beträgt|liegt|are|is|was|has|measures?|comes?)\b/gi;
+    const copRe = /(?:\b(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+)?([A-Za-zÄÖÜäöüß]{3,})\s+(?:ist|sind|war|waren|hat|hatte|misst|beträgt|liegt|are|is|was|has|measures?|comes?)\b/gi;
     let m;
-    while ((m = copRe.exec(sent))) { if (!R5J_ART.test(m[1])) cands.push({ n: m[1], at: m.index }); }
-    const preRe = /(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+([A-Za-zÄÖÜäöüß]{3,})\b/gi;
-    while ((m = preRe.exec(sent))) { if (!R5J_ART.test(m[1])) cands.push({ n: m[1], at: m.index }); }
+    while ((m = copRe.exec(sent))) { if (!R5J_ART.test(m[1]) && !R5J_NOTNOUN.test(m[1])) cands.push({ n: m[1], at: m.index }); }
+    const preRe = /\b(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+([A-Za-zÄÖÜäöüß]{3,})\b/gi;
+    while ((m = preRe.exec(sent))) { if (!R5J_ART.test(m[1]) && !R5J_NOTNOUN.test(m[1])) cands.push({ n: m[1], at: m.index }); }
     if (cands.length) noun = cands.sort((a, b) => a.at - b.at).pop().n;
     if (part) noun = part;
     if (noun && R5J_DIMNOUN.test(noun)) {
@@ -2861,23 +2862,112 @@ const ENGINE = (function () {
     if (dm && dm !== noun) parts.push(dm);
     return parts.join(", ");
   }
+  function r5jMid(x) { return (Number(x.lo) + Number(x.hi)) / 2; }
+  function r5jAlmost(a, b) {
+    if (!isFinite(a) || !isFinite(b)) return false;
+    return Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+  }
+  function r5jBagsEqual(A, B) {
+    if (A.length !== B.length) return false;
+    const a = A.map(r5jMid).sort((x, y) => x - y), b = B.map(r5jMid).sort((x, y) => x - y);
+    return a.every((v, i) => r5jAlmost(v, b[i]));
+  }
+  function r5jBagEquivalent(A, B) {
+    if (!A.length || !B.length) return false;
+    if (r5jBagsEqual(A, B)) return true;
+    const sA = A.reduce((s, x) => s + r5jMid(x), 0);
+    const sB = B.reduce((s, x) => s + r5jMid(x), 0);
+    if (r5jAlmost(sA, sB)) return true;
+    if (A.length > 1 && B.some(x => r5jAlmost(sA, r5jMid(x)))) return true;
+    if (B.length > 1 && A.some(x => r5jAlmost(sB, r5jMid(x)))) return true;
+    return false;
+  }
+  function r5jDistinctDms(list) { return [...new Set(list.map(g => g.r.dm).filter(Boolean))]; }
   function r5jDimConflicts(ansA, A, ansB, B, dim) {
     if (A.length < 2 && B.length < 2) return null; // Einzelfall: bestehende Logik (inkl. 5i-Hinweis)
     const gA = A.map(x => ({ x, r: r5jRefOf(ansA, x) }));
     const gB = B.map(x => ({ x, r: r5jRefOf(ansB, x) }));
-    if (![...gA, ...gB].some(g => g.r.noun || g.r.dm)) return null;
-    const hard = [], seen = new Set();
-    for (const a of gA) for (const b of gB) {
-      if (!r5jRefsCompatible(a.r, b.r) || cfOverlap(a.x, b.x)) continue;
-      const key = r5jRefLabel(a.r, b.r);
-      const id = key + "|" + a.x.label + "|" + b.x.label;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      hard.push({ dim, key, a: a.x.label, b: b.x.label });
+    const hasRef = [...gA, ...gB].some(g => g.r.noun || g.r.dm);
+    if (!hasRef) {
+      if (r5jBagEquivalent(A, B)) return [];
+      return null;
     }
-    const uA = gA.filter(g => !g.r.noun && !g.r.dm).map(g => g.x), uB = gB.filter(g => !g.r.noun && !g.r.dm).map(g => g.x);
-    if (uA.length && uB.length && !uA.some(x => uB.some(y => cfOverlap(x, y))))
-      hard.push({ dim, key: "", a: uA.map(x => x.label).join(", "), b: uB.map(x => x.label).join(", ") });
+    const hard = [];
+    function report(aG, bG, key) {
+      const aVals = aG.map(g => g.x), bVals = bG.map(g => g.x);
+      if (!aVals.length || !bVals.length) return;
+      if (r5jBagEquivalent(aVals, bVals)) return;
+      hard.push({ dim, key, a: aVals.map(x => x.label).join(", "), b: bVals.map(x => x.label).join(", ") });
+    }
+    function softOrConflict(aG, bG, key, allowOverlap, allowSum) {
+      const aVals = aG.map(g => g.x), bVals = bG.map(g => g.x);
+      if (!aVals.length || !bVals.length) return;
+      if (allowSum === false) { if (r5jBagsEqual(aVals, bVals)) return; }
+      else if (r5jBagEquivalent(aVals, bVals)) return;
+      if (allowOverlap && aVals.some(x => bVals.some(y => cfOverlap(x, y)))) return;
+      hard.push({ dim, key, a: aVals.map(x => x.label).join(", "), b: bVals.map(x => x.label).join(", ") });
+    }
+
+    const dms = r5jDistinctDms([...gA, ...gB]);
+    for (const dm of dms) {
+      const a = gA.filter(g => g.r.dm === dm), b = gB.filter(g => g.r.dm === dm);
+      const aNouns = [...new Set(a.map(g => g.r.noun).filter(Boolean))];
+      const bNouns = [...new Set(b.map(g => g.r.noun).filter(Boolean))];
+      if (aNouns.length && bNouns.length) {
+        for (const n of aNouns) {
+          if (!bNouns.includes(n)) continue;
+          report(a.filter(g => g.r.noun === n), b.filter(g => g.r.noun === n), r5jRefLabel({ noun: n, dm }, { noun: n, dm }));
+        }
+      } else if (aNouns.length && !bNouns.length) {
+        if (aNouns.length === 1) report(a, b, r5jRefLabel({ noun: aNouns[0], dm }, { noun: "", dm }));
+        else softOrConflict(a, b, dm, true);
+      } else if (!aNouns.length && bNouns.length) {
+        if (bNouns.length === 1) report(a, b, r5jRefLabel({ noun: "", dm }, { noun: bNouns[0], dm }));
+        else softOrConflict(a, b, dm, true);
+      } else {
+        report(a, b, dm);
+      }
+    }
+
+    const aN = gA.filter(g => !g.r.dm), bN = gB.filter(g => !g.r.dm);
+    const nounsA = [...new Set(aN.map(g => g.r.noun).filter(Boolean))];
+    const nounsB = [...new Set(bN.map(g => g.r.noun).filter(Boolean))];
+    const nouns = [...new Set([...gA, ...gB].map(g => g.r.noun).filter(Boolean))];
+    const pairedNouns = new Set();
+    for (const n of nounsA) {
+      if (!nounsB.includes(n)) continue;
+      pairedNouns.add(n);
+      softOrConflict(aN.filter(g => g.r.noun === n), bN.filter(g => g.r.noun === n), n, true);
+    }
+    // Eine Seite hat einen Gegenstand, die andere ist ohne Gegenstandswort: nur dann zusammenlegen, wenn nicht mehrere Gegenstände im Spiel sind.
+    const aU = aN.filter(g => !g.r.noun), bU = bN.filter(g => !g.r.noun);
+    if (nouns.length === 1) {
+      const n = nouns[0];
+      const aParts = aN.filter(g => !g.r.noun || g.r.noun === n);
+      const bParts = bN.filter(g => !g.r.noun || g.r.noun === n);
+      if (aParts.length && bParts.length && !pairedNouns.has(n))
+        softOrConflict(aParts, bParts, n, true);
+    } else if (!nounsA.length && !nounsB.length && aU.length && bU.length) {
+      if (r5jBagEquivalent(aU.map(g => g.x), bU.map(g => g.x))) { /* gleich oder Summe */ }
+      else if (!aU.some(g => bU.some(h => cfOverlap(g.x, h.x))))
+        hard.push({ dim, key: "", a: aU.map(g => g.x.label).join(", "), b: bU.map(g => g.x.label).join(", ") });
+    }
+
+    // Rest: eine Seite nennt nur den Gegenstand ohne Maßwort, die andere hat Maßwörter (Höhe/Breite). Nicht über verschiedene Maße summieren.
+    for (const n of nouns) {
+      const aBare = aN.filter(g => g.r.noun === n);
+      const bBare = bN.filter(g => g.r.noun === n);
+      const aDm = gA.filter(g => g.r.noun === n && g.r.dm);
+      const bDm = gB.filter(g => g.r.noun === n && g.r.dm);
+      if (aBare.length && bDm.length && !bBare.length) {
+        const dmsB = r5jDistinctDms(bDm);
+        softOrConflict(aBare, bDm, n, dmsB.length > 1, dmsB.length <= 1);
+      }
+      if (bBare.length && aDm.length && !aBare.length) {
+        const dmsA = r5jDistinctDms(aDm);
+        softOrConflict(aDm, bBare, n, dmsA.length > 1, dmsA.length <= 1);
+      }
+    }
     return hard;
   }
 
