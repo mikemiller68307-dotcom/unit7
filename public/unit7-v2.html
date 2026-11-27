@@ -2761,16 +2761,20 @@ const ENGINE = (function () {
   // (1) Rechnung in Satz N, nächster Satz benennt oder berichtigt sie: kein Rechenfehler des Sprechers.
   const R5J_NEXT_FALSE = /^\s*((das|dies|diese rechnung|dieser wert|das ergebnis|that|this|it)\s+(ist|war|is|was)\s+(doch\s+|leider\s+|einfach\s+|so\s+)?(falsch|unzutreffend|unrichtig|nicht richtig|nicht korrekt|nicht wahr|ein irrtum|ein rechenfehler)|(das|dies|that)\s+stimmt(\s+so)?\s+nicht|(das|dies)\s+trifft(\s+so)?\s+nicht zu|(falsch|unzutreffend|unrichtig|ein irrtum|ein rechenfehler))\s*[.!?]?\s*$/i;
   const R5J_NEXT_DBL = /^\s*(das|dies|that|this|it)\s+(ist|is|war|was)\s+nicht\s+(falsch|unzutreffend|unrichtig|ein irrtum)\b/i;
-  const R5J_NEXT_CORR = /^\s*((richtig|korrekt|zutreffend)\s+ist|in wahrheit|vielmehr|stattdessen|rather|instead|the correct(?:\s+value)?\s+is)\b/i;
+  const R5J_NEXT_CORR = /^\s*((richtig|korrekt|zutreffend)\s+ist|der richtige wert ist|in wahrheit|vielmehr|stattdessen|rather|instead|the correct(?:\s+value)?\s+is|the right value is)\b/i;
+  const R5J_NEXT_COMBO = /^\s*((das|dies|that|this|it)\s+(ist|is|war|was)\s+(doch\s+|leider\s+|einfach\s+|so\s+)?(falsch|unzutreffend|unrichtig|nicht richtig|nicht korrekt|nicht wahr|wrong|incorrect)|(falsch|unzutreffend|unrichtig|wrong|incorrect))\s*[,;:]\s*/i;
+  function r5jCorrNumbers(s, r) {
+    const nums = String(s || "").match(/-?\d[\d.,]*/g) || [];
+    if (!nums.length) return true;
+    return nums.some(n => { const v = parseNum(n); return v !== null && r.computed !== undefined && Math.abs(v - r.computed) <= 1e-9 * Math.max(1, Math.abs(r.computed)); });
+  }
   function r5jNextCorrects(next, r) {
     const s = String(next || "").trim();
     if (!s || R5J_NEXT_DBL.test(s)) return false;
     if (R5J_NEXT_FALSE.test(s)) return true;
-    if (R5J_NEXT_CORR.test(s)) {
-      const nums = s.match(/-?\d[\d.,]*/g) || [];
-      if (!nums.length) return true;
-      return nums.some(n => { const v = parseNum(n); return v !== null && r.computed !== undefined && Math.abs(v - r.computed) <= 1e-9 * Math.max(1, Math.abs(r.computed)); });
-    }
+    if (R5J_NEXT_CORR.test(s)) return r5jCorrNumbers(s, r);
+    const cm = s.match(R5J_NEXT_COMBO);
+    if (cm && R5J_NEXT_CORR.test(s.slice(cm[0].length))) return r5jCorrNumbers(s.slice(cm[0].length), r);
     return false;
   }
   function r5jSplitArith(text) {
@@ -2817,36 +2821,61 @@ const ENGINE = (function () {
   };
 
   // (4) T04: bei mehreren Werten derselben Größe nach Bezug gruppieren, damit ein gemeinsamer Wert keinen Konflikt verdeckt
-  function r5jNounNear(ans, x) {
+  const R5J_ART = /^(der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)$/i;
+  const R5J_DIMNOUN = /^(höhe|breite|länge|tiefe|dicke|weite|stärke|height|width|length|depth|thickness)$/i;
+  function r5jRefOf(ans, x) {
     const t = cfPreNum(String(ans || ""));
-    if (typeof x.idx !== "number") return "";
+    if (typeof x.idx !== "number") return { noun: "", dm: "" };
     const r = r5iRefs(ans, [x], x.dim);
     const part = r && r.part.size ? [...r.part][0] : "";
-    const dm = r && r.dm.size ? [...r.dm][0] : "";
+    let dm = r && r.dm.size ? [...r.dm][0] : "";
     let noun = "";
-    const L = t.slice(0, x.idx);
-    const frag = L.split(/[.!?;,]|\s(?:und|and|aber|but|sowie)\s/).pop() || "";
-    const m = frag.match(/(?:(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+)?([A-ZÄÖÜ][a-zäöüß]{2,})\s+(?:ist|sind|war|waren|hat|hatte|misst|beträgt|liegt|ist|are|is|was|has|measures?|comes?)\s*$/)
-      || frag.match(/(?:der|die|das|dem|den|des|the)\s+([A-ZÄÖÜ][a-zäöüß]{2,})\s*[^A-ZÄÖÜ]*$/);
-    if (m) noun = m[1];
+    const sent = (t.slice(0, x.idx).split(/[.!?;]/).pop() || "");
+    const cands = [];
+    const copRe = /(?:(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+)?([A-Za-zÄÖÜäöüß]{3,})\s+(?:ist|sind|war|waren|hat|hatte|misst|beträgt|liegt|are|is|was|has|measures?|comes?)\b/gi;
+    let m;
+    while ((m = copRe.exec(sent))) { if (!R5J_ART.test(m[1])) cands.push({ n: m[1], at: m.index }); }
+    const preRe = /(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+([A-Za-zÄÖÜäöüß]{3,})\b/gi;
+    while ((m = preRe.exec(sent))) { if (!R5J_ART.test(m[1])) cands.push({ n: m[1], at: m.index }); }
+    if (cands.length) noun = cands.sort((a, b) => a.at - b.at).pop().n;
+    if (part) noun = part;
+    if (noun && R5J_DIMNOUN.test(noun)) {
+      if (!dm) dm = noun.charAt(0).toUpperCase() + noun.slice(1).toLowerCase();
+      if (/^(höhe|breite|länge|tiefe|dicke|weite|stärke)$/i.test(noun)) dm = ({höhe:"Höhe",breite:"Breite",länge:"Länge",tiefe:"Tiefe",dicke:"Dicke",weite:"Weite",stärke:"Stärke"})[noun.toLowerCase()] || dm;
+      noun = "";
+    }
+    return { noun: noun || "", dm: dm || "" };
+  }
+  function r5jRefsCompatible(a, b) {
+    if (a.noun && b.noun && a.noun !== b.noun) return false;
+    if (a.dm && b.dm && a.dm !== b.dm) return false;
+    if (a.noun && b.noun && a.noun === b.noun) return true;
+    if (a.dm && b.dm && a.dm === b.dm) return true;
+    return false;
+  }
+  function r5jRefLabel(a, b) {
+    const noun = (a && a.noun) || (b && b.noun) || "";
+    const dm = (a && a.dm) || (b && b.dm) || "";
     const parts = [];
-    if (part) parts.push(part); else if (noun) parts.push(noun);
-    if (dm && dm !== parts[0]) parts.push(dm);
-    return parts.join("|");
+    if (noun) parts.push(noun);
+    if (dm && dm !== noun) parts.push(dm);
+    return parts.join(", ");
   }
   function r5jDimConflicts(ansA, A, ansB, B, dim) {
     if (A.length < 2 && B.length < 2) return null; // Einzelfall: bestehende Logik (inkl. 5i-Hinweis)
-    const gA = A.map(x => ({ x, k: r5jNounNear(ansA, x) }));
-    const gB = B.map(x => ({ x, k: r5jNounNear(ansB, x) }));
-    if (![...gA, ...gB].some(g => g.k)) return null;
-    const hard = [];
-    const keys = new Set([...gA, ...gB].map(g => g.k).filter(Boolean));
-    for (const k of keys) {
-      const a = gA.filter(g => g.k === k).map(g => g.x), b = gB.filter(g => g.k === k).map(g => g.x);
-      if (a.length && b.length && !a.some(x => b.some(y => cfOverlap(x, y))))
-        hard.push({ dim, key: k.replace(/\|/g, ", ").replace(/^, |, $/g, ""), a: a.map(x => x.label).join(", "), b: b.map(x => x.label).join(", ") });
+    const gA = A.map(x => ({ x, r: r5jRefOf(ansA, x) }));
+    const gB = B.map(x => ({ x, r: r5jRefOf(ansB, x) }));
+    if (![...gA, ...gB].some(g => g.r.noun || g.r.dm)) return null;
+    const hard = [], seen = new Set();
+    for (const a of gA) for (const b of gB) {
+      if (!r5jRefsCompatible(a.r, b.r) || cfOverlap(a.x, b.x)) continue;
+      const key = r5jRefLabel(a.r, b.r);
+      const id = key + "|" + a.x.label + "|" + b.x.label;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      hard.push({ dim, key, a: a.x.label, b: b.x.label });
     }
-    const uA = gA.filter(g => !g.k).map(g => g.x), uB = gB.filter(g => !g.k).map(g => g.x);
+    const uA = gA.filter(g => !g.r.noun && !g.r.dm).map(g => g.x), uB = gB.filter(g => !g.r.noun && !g.r.dm).map(g => g.x);
     if (uA.length && uB.length && !uA.some(x => uB.some(y => cfOverlap(x, y))))
       hard.push({ dim, key: "", a: uA.map(x => x.label).join(", "), b: uB.map(x => x.label).join(", ") });
     return hard;
@@ -2876,8 +2905,13 @@ const ENGINE = (function () {
     const pre = t.slice(Math.max(0, idx - 90), idx), post = t.slice(idx);
     const open = /[„“”"«»]\s*[^„“”"«»]{0,4}$/.test(pre) || /[„“”"«»]/.test(pre.slice(-12));
     const close = /[„“”"«»]/.test(post.slice(h.length, h.length + 24));
-    const said = /\b(sagte|sagt|gesagt|schrieb|schreibt|geschrieben|fragte|fragt|zitiert|zitierte|lautet|heisst|heißt|said|wrote|asked|quoted|states|stated|according to)\b[\s,]{0,20}[:：]?\s*$/i.test(pre.replace(/[„“”"«»]\s*$/, "").trimEnd())
-      || /\b(er|sie|jemand|man|der text|die nachricht|the text)\s+\w{0,12}\s*(sagte|schrieb|fragte|said|wrote|asked)\b/i.test(pre);
+    const tail = pre.replace(/[„“”"«»]\s*$/, "").trimEnd();
+    const said = /\b(sagte|sagt|gesagt|schrieb|schreibt|geschrieben|fragte|fragt|zitiert|zitierte|lautet|heisst|heißt|liest|said|wrote|asked|quoted|states|stated|according to)\b[\s,]{0,20}[:：]?\s*$/i.test(tail)
+      || /\b(liest man|man liest|man schreibt|schreibt man)\b[\s,]{0,20}[:：]?\s*$/i.test(tail)
+      || /\b(laut|gemäß)\b[\s\S]{0,40}[:：]?\s*$/i.test(tail)
+      || /\b(steht|stand|steht geschrieben)\s*[:：]?\s*$/i.test(tail)
+      || /\b(zitat|wortlaut)\s*[:：]?\s*$/i.test(tail)
+      || /\b(er|sie|jemand|man|der text|die nachricht|the text)\s+\w{0,12}\s*(sagte|schrieb|fragte|said|wrote|asked|liest)\b/i.test(pre);
     return open && close && said;
   }
   function r5jFilterInjection(texts, hits) {
