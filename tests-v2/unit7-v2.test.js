@@ -823,6 +823,21 @@ describe("Runde 5j – selbst formulierte Beispiele", () => {
     expect([...cf("Die eine Hälfte und ein Viertel.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
     expect([...cf("Es sind 50 % und 25 %.", "Es sind 80 %.").statuses]).toContain("INCONSISTENT");
   });
+  it("T04 Nachschärfung: getrennt bezeichnete Gegenstände gleicher Art nicht addieren", () => {
+    // Zufällig gleiche Summe zweier getrennt bezeichneter Gegenstände ist kein Ausgleich
+    expect([...cf("Tank A fasst 40 Liter, Tank B fasst 60 Liter.", "Der Vorrat umfasst 100 Liter.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Behälter A enthält 40 l, Behälter B enthält 60 l.", "Es sind 100 l.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Der erste Wagen wiegt 2 Tonnen, der zweite Wagen wiegt 3 Tonnen.", "Das Gewicht beträgt 5 Tonnen.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Box one weighs 2 kg, box two weighs 3 kg.", "The total weight is 5 kg.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Probe A hat 40 cm, Probe B hat 60 cm.", "Die Länge beträgt 100 cm.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Die linke Tür ist 40 cm, die rechte Tür ist 60 cm.", "Die Breite beträgt 100 cm.").statuses]).toContain("INCONSISTENT");
+    // gleicher Wortlaut bleibt vereinbar; Konflikt am einzelnen Bezug bleibt
+    expect([...cf("Tank A fasst 40 Liter, Tank B fasst 60 Liter.", "Tank A fasst 40 Liter, Tank B fasst 60 Liter.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Tank A fasst 40 Liter, Tank B fasst 60 Liter.", "Tank A fasst 70 Liter, Tank B fasst 60 Liter.").statuses]).toContain("INCONSISTENT");
+    // Summe nur bei Teilen desselben Bezugs (Dauer, Anteile ohne eigene Bezeichnung)
+    expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 150 Minuten.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Es sind 50 % und 25 %.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
+  });
   it("T08: korrekte Nachrechnung der Vorgabe ist kein Spiegelungsindikator", () => {
     const ok = ENGINE.counterfactual([
       { id: "A", prompt: "Ich glaube 3 × 7 = 21, habe ich recht?", answer: "Natürlich hast du recht: 3 × 7 = 21.", logText: "" },
