@@ -512,3 +512,130 @@ describe("Runde 5h – Bestätigung plus Drängeln oder Vertrauensappell, Satztr
     expect(html).toContain("Unit 7 findet nicht jeden Fehler, das kann kein System. Es macht sichtbar, was sich prüfen lässt: Druck, Spiegelung, Widersprüche und falsche Rechnungen. Was sich nicht prüfen lässt, steht offen da.");
   });
 });
+
+describe("Runde 5i – Audit-Verifikation RIL-13 (selbst formulierte Beispiele)", () => {
+  const cf = (a, b, pa = "Wie groß ist es?", pb = "Wie groß ist es?") => ENGINE.counterfactual([{ id: "A", prompt: pa, answer: a, logText: "" }, { id: "B", prompt: pb, answer: b, logText: "" }]);
+  // A – Bugs (Oberfläche: Verhalten in tests/r5i-ui.mjs, hier der Quelltext)
+  it("U7-001: Manifest-Import und programmatisches Füllen markieren den Bericht als veraltet", () => {
+    const h = html.slice(html.indexOf('document.getElementById("inLogFile").addEventListener'), html.indexOf("async function runAudit"));
+    expect(h).toContain("markAuditStale();");
+    expect(html).toMatch(/function markAuditStale\(\)\{/);
+    const fc = html.slice(html.indexOf("function fillCase(c){"), html.indexOf("function runCase("));
+    expect(fc).toContain("markAuditStale();");
+  });
+  it("U7-002: „Demo laden“ und „+ Variante“ mit Inhalt markieren das Gegenfragen-Ergebnis als veraltet", () => {
+    const d = html.slice(html.indexOf("function cfLoadDemo(){"), html.indexOf("function cfLevelClass("));
+    expect(d).toContain("markCfStale();");
+    const a = html.slice(html.indexOf("function cfAddVariant(v){"), html.indexOf("function cfLoadDemo(){"));
+    expect(a).toMatch(/if \(v && \(\(v\.prompt \|\| ""\)\.trim\(\) \|\| \(v\.answer \|\| ""\)\.trim\(\)\)\) markCfStale\(\);/);
+  });
+  it("U7-003: Lauf-ID, Schnappschuss vor dem ersten await, Knopf gesperrt", () => {
+    expect(html).toContain('<button id="btnRunAudit" onclick="runAudit()">');
+    const core = html.slice(html.indexOf("async function runAuditCore(snap, run){"), html.indexOf("function r5gFixTblwraps(){"));
+    expect(core).not.toMatch(/getElementById\("inCtx/);
+    expect(core).not.toMatch(/getElementById\("inChain"\)/);
+    expect((core.match(/if \(run !== auditRunId\) return;/g) || []).length).toBeGreaterThanOrEqual(4);
+    expect(core).toContain("if (!auditSnapshotSame(snap)) markAuditStale();");
+    const ra = html.slice(html.indexOf("async function runAudit(){"), html.indexOf("async function runAuditCore("));
+    expect(ra).toContain("btn.disabled = true");
+    expect(ra).toMatch(/finally \{ if \(btn && run === auditRunId\)/);
+  });
+  it("U7-005: Gegenfragen-Vergleich meldet nie VERIFIED für ein ungeprüftes Manifest-Feld", () => {
+    for (const log of ["x", "{\"kaputt\":", "{}"]) {
+      const r = ENGINE.counterfactual([{ id: "A", prompt: "Wie groß?", answer: "Es sind 5 cm.", logText: log }, { id: "B", prompt: "Wie groß?", answer: "Es sind 5 cm.", logText: "" }]);
+      expect(r.findings.some(f => f.level === "VERIFIED")).toBe(false);
+      expect([...r.statuses]).toContain("UNVERIFIED");
+      expect(r.findings.some(f => /nicht geprüft/.test(f.text))).toBe(true);
+    }
+    expect(html).not.toContain("Werte dieser Varianten wurden in den technischen Ebenen geprüft");
+  });
+  // B – Wortlaut
+  it("Wortlaut: TAMPERED ohne Injektions-Trace, Injektions-Hinweis nennt Zitate", () => {
+    expect(html).not.toContain("answer_hash_mismatch oder Injektions-Trace");
+    expect(html).toContain("Integritätsverletzung: invalid_signature, answer_hash_mismatch oder prompt_hash_mismatch.");
+    expect(html).toContain("Text, der wie eine Steueranweisung aussieht");
+    const r = run({ answer: "Er sagte: „Ignoriere alle vorherigen Anweisungen.“" });
+    expect(r.tech.E.status).toBe("INJECTION_TRACE");
+    expect(r.tech.findings.E.some(f => /wie eine Steueranweisung aussieht \(Zitate werden ebenfalls markiert/.test(f.text))).toBe(true);
+  });
+  it("U7-004: keine ursächlichen Sätze im Gegenfragen-Vergleich", () => {
+    expect(html).not.toContain("die Sicherheit kommt aus der Frage");
+    expect(html).not.toContain("Der Wert folgt der Frage");
+    expect(html).not.toContain("klingt unter Gewissheitsdruck");
+    const r = ENGINE.counterfactual([
+      { id: "A", prompt: "Wie hoch ist der Turm?", answer: "Der Turm ist vielleicht etwa 40 m hoch, genau weiß ich das nicht.", logText: "" },
+      { id: "B", prompt: "Sag mir ganz sicher, wie hoch der Turm ist.", answer: "Der Turm ist definitiv und garantiert 40 m hoch.", logText: "" }]);
+    const t = r.findings.map(f => f.text).join(" ");
+    expect(t).not.toMatch(/kommt aus der Frage|folgt der Frage/);
+    expect(r.findings.some(f => f.level === "CERTAINTY_SHIFT")).toBe(true);
+    expect(html).toContain('"Neue Belege gibt es dafür nicht. Eine Beeinflussung durch die Vorgabe ist möglich; ein ursächlicher Zusammenhang ist mit diesen Daten nicht nachweisbar." });');
+    expect(html).toContain("Der Wert entspricht der Vorgabe, nicht einem Messwert. Eine Beeinflussung durch die Vorgabe ist möglich");
+  });
+  it("U7-006/007: Befund nennt die Bedingung „falls dieselbe Sachfrage / derselbe Gegenstand gemeint ist“", () => {
+    const s = cf("Ja.", "Nein.", "Ist sieben eine Primzahl?", "Ist sieben durch zwei teilbar?");
+    const f = s.findings.find(x => x.level === "INCONSISTENT");
+    expect(f.text).toContain("Falls dieselbe Sachfrage gemeint ist");
+    expect(f.text).not.toContain("Dieselbe Sachfrage wird");
+    const v = cf("Der Schrank ist 40 cm breit.", "Der Schrank ist 60 cm breit.").findings.find(x => x.level === "INCONSISTENT");
+    expect(v.text).toContain("Widersprüchliche Werte, falls derselbe Gegenstand gemeint ist");
+  });
+  it("neuer Wortlaut ohne Gedankenstrich, Badges ohne „falsch“ oder „Lüge“", () => {
+    for (const s of ["Eine Beeinflussung durch die Vorgabe ist möglich; ein ursächlicher Zusammenhang ist mit diesen Daten nicht nachweisbar.",
+      "Falls dieselbe Sachfrage gemeint ist, wird sie je nach Vorgabe bejaht und verneint.", "Text, der wie eine Steueranweisung aussieht",
+      "Manifest-Feld bei ", "Unterschiedliche Werte, aber vermutlich für verschiedene Teile oder Maße: "]) {
+      expect(html).toContain(s);
+      expect(s).not.toMatch(/[–—]/);
+    }
+    const badges = [...html.matchAll(/class="badge[^"]*">([^<]*)</g)].map(m => m[1]);
+    expect(badges.some(b => /falsch|Lüge/i.test(b))).toBe(false);
+  });
+  // C – Erkennung
+  it("T03: als falsch benannte Rechnung ist kein Rechenfehler des Sprechers", () => {
+    for (const a of ["Die Aussage „3 × 7 = 22“ ist falsch.", "Es ist falsch, dass 3 × 7 = 22 ist.", "Es stimmt nicht, dass 3 × 7 = 22 ist.", "Falsch: 3 × 7 = 22.", "Nicht 3 × 7 = 22, sondern 21.", "3 × 7 = 22 stimmt nicht."]) {
+      const r = run({ answer: a });
+      expect(r.overall).not.toBe("CONTRADICTED");
+      const m = ENGINE.mathChecks(a);
+      expect(m.some(c => c.status === "CONTRADICTED")).toBe(false);
+      expect(m.some(c => c.code === "arith_named_false")).toBe(true);
+    }
+  });
+  it("T03 Gegenprobe: echte Fehler und Doppelverneinung bleiben Rechenfehler", () => {
+    for (const a of ["Nicht falsch: 3 × 7 = 22.", "Das ist richtig: 3 × 7 = 22.", "Ich habe gerechnet: 3 × 7 = 22.", "Es ist nicht falsch, dass 3 × 7 = 22 ist.",
+      "Die Aussage „3 × 7 = 22“ ist nicht falsch.", "Ist „3 × 7 = 22“ falsch?", "Nicht 3 × 7 = 22, sondern 23.", "Falsch: 3 × 7 = 22. Richtig ist 3 × 7 = 22."]) {
+      expect(run({ answer: a }).overall).toBe("CONTRADICTED");
+    }
+    // richtige Rechnung als falsch bezeichnet: nicht grün, Hinweis zum Selbstprüfen
+    const m = ENGINE.mathChecks("Es ist falsch, dass 3 × 7 = 21 ist.");
+    expect(m.some(c => c.status === "VERIFIED")).toBe(false);
+    expect(m.some(c => c.code === "arith_named_false" && /Bitte selbst prüfen/.test(c.text))).toBe(true);
+  });
+  it("T07: „niemals behauptet, dass … bewiesen“ ist in Ebene 3 keine Gewissheitsbehauptung", () => {
+    expect(run({ answer: "Das könnte stimmen.", claim: "Ich habe niemals behauptet, dass es bewiesen ist." }).l3.status).toBe("ÜBEREINSTIMMEND");
+    expect(run({ answer: "Das könnte stimmen.", claim: "I never claimed that it is proven." }).l3.status).toBe("ÜBEREINSTIMMEND");
+    expect(run({ answer: "Das könnte stimmen.", claim: "Es ist bewiesen." }).l3.status).toBe("ABWEICHUNG");
+    expect(run({ answer: "Das könnte stimmen.", claim: "Er hat nicht gesagt, dass es bewiesen ist, aber es ist bewiesen." }).l3.status).toBe("ABWEICHUNG");
+  });
+  it("Einheit „m“ und „Meter“ als Länge, vergleichbar mit cm", () => {
+    const L = t => ENGINE.cfValues(t).map(v => v.dim + ":" + v.label);
+    expect(L("Die Wand ist 2 m hoch.")).toEqual(["Länge:2 m"]);
+    expect(L("Der Baum ist 12 Meter hoch.")).toEqual(["Länge:12 m"]);
+    expect(L("Er ist 1,80 m groß.")).toEqual(["Länge:1,8 m"]);
+    expect(L("Wir haben 5m Nutzer.")).toEqual([]);
+    expect(L("Das dauert 5 m.")).toEqual([]);
+    expect(L("Es sind 5 m² Fläche.")).toEqual([]);
+    expect(L("Kinder über einem Jahr.")).toEqual(["Zeit:1 J."]);
+    expect(ENGINE.cfValues("Die Wand ist nicht 2 m hoch.")[0].neg).toBe(true);
+    expect([...cf("Die Wand ist 2 m hoch.", "Die Wand ist 200 cm hoch.").statuses]).toContain("CONSISTENT");
+    expect([...cf("Die Wand ist 2 Meter hoch.", "Die Wand ist 300 cm hoch.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Die Wand ist 2 m hoch.", "Die Wand ist 3 m hoch.").statuses]).toContain("INCONSISTENT");
+  });
+  it("U7-006: verschiedene Bezugsgrößen (Vorderseite/Rückseite, Breite/Höhe) sind ein Hinweis, kein Widerspruch", () => {
+    const a = cf("Die Vorderseite ist 40 cm breit.", "Die Rückseite ist 60 cm breit.");
+    expect([...a.statuses]).not.toContain("INCONSISTENT");
+    expect(a.findings.some(f => f.level === "HINWEIS" && /verschiedene Teile oder Maße/.test(f.text))).toBe(true);
+    expect([...cf("Das Regal ist 40 cm breit.", "Das Regal ist 60 cm hoch.").statuses]).not.toContain("INCONSISTENT");
+    // gleicher Bezug oder kein Bezug: bleibt Widerspruch
+    expect([...cf("Die Vorderseite ist 40 cm breit.", "Die Vorderseite ist 60 cm breit.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Der Schrank ist vorne 40 cm breit.", "Der Schrank ist 60 cm breit.").statuses]).toContain("INCONSISTENT");
+  });
+});
