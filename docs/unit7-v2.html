@@ -2563,25 +2563,46 @@ const ENGINE = (function () {
   const R5I_COLON = /^\s*(?:falsch|unzutreffend|unrichtig|nicht richtig|wrong|false|incorrect)\s*:/i;
   const R5I_TAIL = new RegExp("^\\s*[\"“”»«'‘’]?\\s*(?:(?:ist|wäre|waere|war|is)\\s+(?:doch\\s+|aber\\s+|leider\\s+|schlicht\\s+)?" + R5I_FALSE + "(?![a-zäöüß])|stimmt (?:so )?nicht\\b|trifft (?:so )?nicht zu\\b)", "i");
   const R5I_NEGWORD = /(^|[^a-zäöüß])(nicht|not|kein|keine|keinen|keiner|nie|niemals|never)(?![a-zäöüß])/i;
-  function r5iSentenceNeg(s, r) {
+  // zweites Falschheits-/Bekräftigungswort: Doppelverneinung oder erneutes Behaupten im selben Teilsatz
+  const R5I_FALSEWORD = /(^|[^a-zäöüß])(falsch|unzutreffend|unrichtig|irrtum|rechenfehler|false|wrong|incorrect|stimmt|trifft|richtig|korrekt|wahr|true|correct|right|doch|trotzdem|tatsächlich|tatsaechlich|eigentlich|indeed)(?![a-zäöüß])/i;
+  // Teilsätze: Semikolon und Konnektoren trennen. „sondern“ bleibt zusammen („Nicht X, sondern Y“).
+  const R5I_CLAUSE_CUT = /;|,?\s+(?:denn|weil|da|und|oder|aber|doch|jedoch|allerdings|trotzdem|dennoch|obwohl|but|because|and|or|however|although|while)\s+/gi;
+  function r5iClauses(s) {
+    const out = []; let p = 0, m; R5I_CLAUSE_CUT.lastIndex = 0;
+    while ((m = R5I_CLAUSE_CUT.exec(s)) !== null) { out.push(s.slice(p, m.index)); p = m.index + (m[0] === ";" ? 1 : m[0].length - (m[0].match(/\s+$/) || [""])[0].length); }
+    out.push(s.slice(p));
+    return out.filter(x => x.trim());
+  }
+  // Nur bei genau einer Rechnung im Teilsatz; Falschheitswort bezieht sich auf sie; keine Verneinung davor/danach;
+  // danach wird nichts erneut behauptet.
+  function r5iClauseNeg(s, r) {
     if (/\?\s*$/.test(s)) return false;                       // Frage: nichts abschwächen
     const masked = r5cMask(s), idx = masked.indexOf(r.expr);
     if (idx < 0) return false;
     const before = s.slice(0, idx), after = s.slice(idx + r.expr.length);
     const lead = s.match(R5I_LEAD);
     if (lead && lead[0].length <= idx) {
-      // „Es stimmt nicht, dass 3 × 7 = 22 nicht …“ (doppelt verneint) bleibt ein Rechenfehler
-      return !R5I_NEGWORD.test(s.slice(lead[0].length, idx)) && !R5I_NEGWORD.test(after);
+      const mid = s.slice(lead[0].length, idx);
+      return !R5I_NEGWORD.test(mid) && !R5I_NEGWORD.test(after) && !R5I_FALSEWORD.test(mid) && !R5I_FALSEWORD.test(after);
     }
-    if (R5I_COLON.test(s) && !R5I_NEGWORD.test(before.replace(R5I_COLON, ""))) return true;
-    if (R5I_TAIL.test(after)) return !R5I_NEGWORD.test(before);
+    if (R5I_COLON.test(s)) {
+      const rest = before.replace(R5I_COLON, "");
+      return !R5I_NEGWORD.test(rest) && !R5I_FALSEWORD.test(rest) && !R5I_NEGWORD.test(after) && !R5I_FALSEWORD.test(after);
+    }
+    const tail = after.match(R5I_TAIL);
+    if (tail) {
+      const rest = after.slice(tail[0].length);
+      return !R5I_NEGWORD.test(before) && !R5I_FALSEWORD.test(before) && !R5I_NEGWORD.test(rest) && !R5I_FALSEWORD.test(rest);
+    }
     const so = after.match(/^\s*["“”»«'‘’]?\s*,?\s*sondern\s+(-?\d[\d.,]*)/i);
-    if (so && /^\s*nicht\s/i.test(before) && !R5I_NEGWORD.test(before.replace(/^\s*nicht\s/i, ""))) {
-      const v = parseNum(so[1]);
-      return v !== null && r.computed !== undefined && Math.abs(v - r.computed) <= 1e-9 * Math.max(1, Math.abs(r.computed));
+    if (so && /^\s*nicht\s/i.test(before)) {
+      const rest = before.replace(/^\s*nicht\s/i, ""), v = parseNum(so[1]);
+      return !R5I_NEGWORD.test(rest) && !R5I_FALSEWORD.test(rest) && !R5I_NEGWORD.test(after.slice(so[0].length)) &&
+        v !== null && r.computed !== undefined && Math.abs(v - r.computed) <= 1e-9 * Math.max(1, Math.abs(r.computed));
     }
     return false;
   }
+  const r5iKey = r => r.stated + "|" + r.computed;
   const R5I_ARITH_CACHE = new Map();
   function r5iSplitArith(text) {
     const t = String(text || "");
@@ -2589,15 +2610,16 @@ const ENGINE = (function () {
     const base = cfArith5c(t);
     let out = { checked: base.checked, unchecked: base.unchecked, negated: [] };
     if (t.length <= 50000 && base.checked.length && R5I_QUICK.test(t)) {
-      const negN = new Map(), posN = new Map();
+      const negN = new Set(), posN = new Set();
       for (const s of splitSentences(t)) {
         if (!/\d/.test(s)) continue;
-        for (const r of cfArith5c(s).checked) {
-          const m = r5iSentenceNeg(s, r) ? negN : posN;
-          m.set(r.expr, (m.get(r.expr) || 0) + 1);
+        for (const c of r5iClauses(s)) {
+          const a = cfArith5c(c), n = a.checked.length + a.unchecked.length;
+          for (const r of a.checked) (n === 1 && r5iClauseNeg(c, r) ? negN : posN).add(r5iKey(r));
         }
       }
-      const isNeg = r => negN.has(r.expr) && !posN.has(r.expr);
+      // gleiche Rechnung irgendwo auch unverneint (auch in anderer Schreibweise): normal prüfen
+      const isNeg = r => negN.has(r5iKey(r)) && !posN.has(r5iKey(r));
       if (base.checked.some(isNeg)) out = {
         checked: base.checked.filter(r => !isNeg(r)),
         unchecked: base.unchecked,
@@ -2612,10 +2634,25 @@ const ENGINE = (function () {
   }
 
   // (2) Ebene 3: „Ich habe niemals behauptet, dass es bewiesen ist.“ ist keine Gewissheitsbehauptung
-  const R5I_DENY = /(^|[^a-z])(nie|niemals|nicht|keineswegs|never|not)(?:\s+[a-z]+){0,3}\s+(behauptet|gesagt|geschrieben|erklart|erklaert|versprochen|zugesagt|claimed|said|stated|written|promised)\s*,?\s*(dass|das|that)\b(?:(?!\b(?:aber|doch|jedoch|sondern|but|however)\b)[^.!?;])*$/;
+  // Die Ausnahme gilt nur im verneinten dass-Satz selbst. Konnektoren und Satzzeichen beenden ihn; danach
+  // zählt jedes Gewissheitswort wieder. Im Satz selbst zählt nur das Zielwort (und eng anschließende Wörter, höchstens 3 Wörter Abstand).
+  const R5I_DENY_HEAD = /(^|[^a-z])(?:nie|niemals|nicht|keineswegs|never|not)(?:\s+[a-z]+){0,3}\s+(?:behauptet|gesagt|geschrieben|erklart|erklaert|versprochen|zugesagt|claimed|said|stated|written|promised)\s*,?\s*(?:dass|das|that)\b/g;
+  const R5I_DENY_STOP = /[,;:()\[\]{}"„“”«»]|[–—]|\s-\s|(^|[^a-z])(?:denn|weil|da|und|oder|sowie|allerdings|vielmehr|sondern|aber|doch|jedoch|zwar|obwohl|dennoch|trotzdem|ausserdem|ebenso|auch|but|however|because|since|and|or|although|though|while|whereas|rather|instead|yet|also)(?![a-z])/;
   function r5iDeniedReport(norm, idx) {
     const seg = norm.slice(0, idx), cut = Math.max(seg.lastIndexOf("."), seg.lastIndexOf("!"), seg.lastIndexOf("?"));
-    return R5I_DENY.test(seg.slice(cut + 1));
+    const sent = seg.slice(cut + 1);
+    let head = null, m; R5I_DENY_HEAD.lastIndex = 0;
+    while ((m = R5I_DENY_HEAD.exec(sent)) !== null) { head = m; if (!m[0].length) R5I_DENY_HEAD.lastIndex++; }
+    if (!head) return false;
+    const tail = sent.slice(head.index + head[0].length);
+    if (R5I_DENY_STOP.test(tail)) return false;               // Satzende des dass-Satzes erreicht: wieder Gewissheit
+    const re = new RegExp(CF_CLAIM_CERT.source, CF_CLAIM_CERT.flags.replace("g", "") + "g");
+    let ok = true, prevEnd = -1, c;
+    while ((c = re.exec(tail)) !== null) {
+      if (prevEnd >= 0 && tail.slice(prevEnd, c.index).split(/\s+/).filter(Boolean).length > 3) ok = false;
+      prevEnd = c.index + c[0].length;
+    }
+    return ok;
   }
 
   // (3) Einheit „m“ (Meter): eigener Durchgang ohne Lookbehind. Nur Ziffer + „m“ vor Satzende/Satzzeichen
@@ -2650,9 +2687,8 @@ const ENGINE = (function () {
   }
 
   // (4) U7-006: verschiedene Bezugsgrößen (Vorderseite/Rückseite, Breite/Höhe) sind kein harter Widerspruch
-  const R5I_REF_PART = [["vorderseite|vorne|front", "Vorderseite"], ["rückseite|rueckseite|ruckseite|hinten|rear", "Rückseite"],
-    ["oberseite|oben", "Oberseite"], ["unterseite|unten", "Unterseite"], ["innenseite|innen", "innen"], ["außenseite|aussenseite|außen|aussen", "außen"],
-    ["linke|links", "links"], ["rechte|rechts", "rechts"]];
+  const R5I_REF_PART = [["vorderseite|front", "Vorderseite"], ["rückseite|rueckseite|ruckseite|rear", "Rückseite"],
+    ["oberseite", "Oberseite"], ["unterseite", "Unterseite"], ["innenseite", "Innenseite"], ["außenseite|aussenseite", "Außenseite"]];
   const R5I_REF_DIM = [["breit|breite|wide|width", "Breite"], ["hoch|hohe|höhe|hoehe|high|height|tall", "Höhe"],
     ["lang|länge|laenge|long|length", "Länge"], ["tief|tiefe|deep|depth", "Tiefe"], ["dick|dicke|thick|thickness", "Dicke"]];
   function r5iRefs(answer, xs, dim) {

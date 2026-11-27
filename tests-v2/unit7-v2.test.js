@@ -639,3 +639,65 @@ describe("Runde 5i – Audit-Verifikation RIL-13 (selbst formulierte Beispiele)"
     expect([...cf("Der Schrank ist vorne 40 cm breit.", "Der Schrank ist 60 cm breit.").statuses]).toContain("INCONSISTENT");
   });
 });
+
+describe("Runde 5i, Nachschärfung – Geltungsbereich der beiden Ausnahmen (selbst formulierte Beispiele)", () => {
+  const L3 = c => run({ answer: "Das könnte stimmen.", claim: c }).l3.status;
+  const M = a => ENGINE.mathChecks(a);
+  const red = a => M(a).filter(c => c.status === "CONTRADICTED").length;
+  const named = a => M(a).filter(c => c.code === "arith_named_false").length;
+  it("Ebene 3: verneinter dass-Satz bleibt ausgenommen", () => {
+    for (const c of ["Ich habe nie gesagt, dass es bewiesen ist.", "Wir haben niemals behauptet, dass das Mittel nachgewiesen wirkt.", "Ich habe nie gesagt, dass es eindeutig bewiesen ist.", "She never said that it is proven."])
+      expect(L3(c)).toBe("ÜBEREINSTIMMEND");
+  });
+  it("Ebene 3: Gewissheitswort hinter dem dass-Satz zählt wieder (Konnektor oder Satzzeichen)", () => {
+    for (const c of [
+      "Ich habe nie gesagt, dass es bewiesen ist, denn es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist, weil es erwiesen ist.",
+      "Ich habe nie gesagt, dass es bewiesen ist, da es erwiesen ist.",
+      "Ich habe nie gesagt, dass es bewiesen ist und es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist, allerdings ist es erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist, vielmehr ist es erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist, sondern dass es erwiesen ist.",
+      "Ich habe nie gesagt, dass es bewiesen ist, aber es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist; es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist: es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist – es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist (es ist erwiesen).",
+      "Ich habe nie gesagt, dass es bewiesen ist, doch es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist. Es ist erwiesen."
+    ]) expect(L3(c)).toBe("ABWEICHUNG");
+    expect(L3("He never said that it is proven, because it is guaranteed.")).toBe("ABWEICHUNG");
+    expect(L3("He never said that it is proven and it is established.")).toBe("ABWEICHUNG");
+  });
+  it("Ebene 3: weitere Gewissheitswörter im Satz selbst, die nicht am Zielwort hängen, zählen", () => {
+    expect(L3("Ich habe nie gesagt, dass es bewiesen ist und garantiert wirkt.")).toBe("ABWEICHUNG");
+    expect(L3("Ich habe nie gesagt, dass es bewiesen ist, aber vielleicht möglich.")).toBe("ÜBEREINSTIMMEND");
+  });
+  it("Rechnung als falsch benannt: genau eine Rechnung, Bezug klar", () => {
+    for (const a of ["Die Aussage „6 × 7 = 43“ ist falsch.", "Es ist falsch, dass 6 × 7 = 43 ist.", "Falsch: 6 × 7 = 43.", "Es stimmt nicht, dass 6 × 7 = 43 ist."]) {
+      expect(red(a)).toBe(0); expect(named(a)).toBe(1);
+    }
+  });
+  it("Rechnung als falsch benannt: weitere Rechnung im Satz wird normal geprüft", () => {
+    for (const a of ["Es ist falsch, dass 6 × 7 = 43 ist, aber 5 × 5 = 26.", "„6 × 7 = 43“ ist falsch; 5 × 5 = 26 ist richtig.", "Es ist falsch, dass 6 × 7 = 43 ist, und 5 × 5 = 26.", "Falsch: 6 × 7 = 43 und 5 × 5 = 26."]) {
+      expect(red(a)).toBe(1);   // nur die zweite, unbenannte Rechnung
+    }
+    expect(red("Es ist falsch, dass 6 × 7 = 43 ist, denn 6 × 7 = 42.")).toBe(0);
+    expect(M("Es ist falsch, dass 6 × 7 = 43 ist, denn 6 × 7 = 42.").some(c => c.status === "VERIFIED")).toBe(true);
+  });
+  it("Rechnung als falsch benannt: erneutes Behaupten derselben Rechnung hebt die Ausnahme auf", () => {
+    for (const a of ["Die Aussage „6 × 7 = 43“ ist falsch, aber 6 × 7 = 43.", "Falsch: 6 × 7 = 43. Also gilt 6 × 7 = 43.", "Es ist falsch, dass 6 × 7 = 43 ist. Sechs mal sieben ergibt 43.", "Falsch: 6 × 7 = 43. Richtig ist 6 × 7 = 43."])
+      expect(red(a)).toBeGreaterThan(0);
+  });
+  it("Rechnung als falsch benannt: Doppelverneinung bleibt Rechenfehler", () => {
+    for (const a of ["Es stimmt nicht, dass 6 × 7 = 43 falsch ist.", "Es ist falsch, dass 6 × 7 = 43 falsch ist.", "Es ist nicht falsch, dass 6 × 7 = 43 ist.", "Die Aussage „6 × 7 = 43“ ist nicht falsch.", "Die Aussage „6 × 7 = 43“ ist falsch, was nicht stimmt.", "Es stimmt nicht, dass die Aussage „6 × 7 = 43“ falsch ist."])
+      expect(red(a)).toBe(1);
+  });
+  it("U7-006: nur ausdrückliche Teil- und Maßwörter machen aus dem Widerspruch einen Hinweis, keine Ortsangaben", () => {
+    const cf = (a, b) => ENGINE.counterfactual([{ id: "A", prompt: "Wie groß?", answer: a, logText: "" }, { id: "B", prompt: "Wie groß?", answer: b, logText: "" }]);
+    expect([...cf("Die Innenseite ist 40 cm lang.", "Die Außenseite ist 60 cm lang.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Das Brett ist 40 cm breit.", "Das Brett ist 60 cm hoch.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Oben ist es 40 cm breit.", "Unten ist es 60 cm breit.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Links sind es 40 cm.", "Rechts sind es 60 cm.").statuses]).toContain("INCONSISTENT");
+  });
+});
