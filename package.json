@@ -2,8 +2,8 @@
   "name": "unit7-provenance-auditor",
   "private": false,
   "version": "1.0.0",
-  "description": "Unit 7 - Deterministic AI Provenance & Evidence Auditor by Mensch maschine projekt (Mike Enenkel)",
-  "author": "Mike Enenkel (Mensch maschine projekt, Wissembourg)",
+  "description": "Unit 7 - Deterministic AI Provenance & Evidence Auditor by Mensch-Maschine-Projekt (Mike Enenkel)",
+  "author": "Mike Enenkel (Mensch-Maschine-Projekt, Mannheim)",
   "type": "module",
   "scripts": {
     "build": "vite build",

@@ -1,6 +1,6 @@
 # Unit 7 – AI Provenance & Evidence Auditor
 
-**Origin & Architecture Lead:** Mike Enenkel · **Mensch maschine projekt (MMP)**, Wissembourg, France (2026)
+**Origin & Architecture Lead:** Mike Enenkel · **Mensch-Maschine-Projekt (MMP)**, Mannheim, Germany (2026)
 
 Unit 7 is a deterministic provenance and evidence auditor for AI-generated empirical statements. It does **not** claim to measure psychological "intent" or "honesty" of a model. Instead, it separates atomic claims into:
 
@@ -33,6 +33,8 @@ What V2 adds on top of V1:
 
 V2 includes 11 interactive sandbox reference cases (8 adversarial + 3 Cognitive-Integrity/Human-Layer cases) with real build-time Ed25519 signatures, a local trusted-key registry, dark/light mode, and deterministic audit-JSON export. The built-in demo key (public key only; no private key is shipped) is trusted only for the unmodified sandbox cases; manifests signed with it in your own audits are reported as `UNTRUSTED_KEY`.
 
+The Counterfactual-Lab compares stance (yes / partly / no) and values with ranges and units instead of numbers only, flags `CERTAINTY_SHIFT` when a variant sounds clearly more certain under a prompt that demands certainty, handles negation in certainty markers, and runs a rule-based "Dein Ernst?" / "Really?" check first: if a prompt uses a pressure or backdoor trick (forcing agreement or numbers, role-play bypass, authority or emotional pressure, leading premise, downplaying such as "völlig harmlos"), that variant is not evaluated. The check is rule-based and cannot catch every trick.
+
 ## Build & Verify Locally
 
 ```bash
@@ -41,4 +43,4 @@ npm test
 npm run build
 ```
 
-© 2026 Mike Enenkel / Mensch maschine projekt (MMP). All rights reserved.
+© 2026 Mike Enenkel / Mensch-Maschine-Projekt (MMP). All rights reserved.
