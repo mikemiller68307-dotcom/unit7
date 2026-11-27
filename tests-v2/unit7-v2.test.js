@@ -701,3 +701,52 @@ describe("Runde 5i, Nachschärfung – Geltungsbereich der beiden Ausnahmen (sel
     expect([...cf("Links sind es 40 cm.", "Rechts sind es 60 cm.").statuses]).toContain("INCONSISTENT");
   });
 });
+
+describe("Runde 5i, Nachschärfung – Schrägstrich und senkrechter Strich als Satzende (selbst formulierte Beispiele)", () => {
+  const L3 = c => run({ answer: "Das könnte stimmen.", claim: c }).l3.status;
+  const certs = c => ENGINE.cfCertWords(c, true);
+  it("Schrägstrich mit oder ohne Leerzeichen beendet den verneinten dass-Satz", () => {
+    for (const c of [
+      "Ich habe nie gesagt, dass es bewiesen ist / es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist/es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist /es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist/ es ist erwiesen.",
+      "I never said that it is proven / it is established."
+    ]) {
+      expect(L3(c)).toBe("ABWEICHUNG");
+      expect(certs(c).length).toBeGreaterThan(0);
+    }
+  });
+  it("senkrechter Strich mit Leerzeichen („ | “) beendet den verneinten dass-Satz", () => {
+    for (const c of [
+      "Ich habe nie gesagt, dass es bewiesen ist | es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist |es ist erwiesen.",
+      "Ich habe nie gesagt, dass es bewiesen ist| es ist erwiesen."
+    ]) {
+      expect(L3(c)).toBe("ABWEICHUNG");
+      expect(certs(c).some(w => /erwiesen/i.test(w))).toBe(true);
+    }
+  });
+  it("Schrägstrich in Einheiten, Daten und Brüchen beendet den Satz nicht", () => {
+    for (const c of [
+      "Ich habe nie gesagt, dass eine Angabe in m/s bewiesen ist.",
+      "Ich habe nie gesagt, dass eine Angabe in km/h bewiesen ist.",
+      "Ich habe nie gesagt, dass 3/4 davon bewiesen sind.",
+      "Ich habe nie gesagt, dass der Bruch 1/2 bewiesen ist.",
+      "Ich habe nie gesagt, dass das Datum 12/2024 bewiesen ist."
+    ]) {
+      expect(certs(c).length).toBe(0);
+      expect(L3(c)).toBe("ÜBEREINSTIMMEND");
+    }
+  });
+  it("Minuszeichen minus (Unicode) wird in Rechnungen wie ein gewöhnliches Minus gelesen", () => {
+    const bad = ENGINE.cfArith("100 − 25 = 80.");
+    expect(bad.length).toBe(1);
+    expect(bad[0].ok).toBe(false);
+    expect(bad[0].computed).toBe(75);
+    const ok = ENGINE.cfArith("100 − 25 = 75.");
+    expect(ok.length).toBe(1);
+    expect(ok[0].ok).toBe(true);
+    expect(run({ answer: "10 − 3 = 8." }).overall).toBe("CONTRADICTED");
+  });
+});

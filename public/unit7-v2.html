@@ -2637,15 +2637,40 @@ const ENGINE = (function () {
   // Die Ausnahme gilt nur im verneinten dass-Satz selbst. Konnektoren und Satzzeichen beenden ihn; danach
   // zählt jedes Gewissheitswort wieder. Im Satz selbst zählt nur das Zielwort (und eng anschließende Wörter, höchstens 3 Wörter Abstand).
   const R5I_DENY_HEAD = /(^|[^a-z])(?:nie|niemals|nicht|keineswegs|never|not)(?:\s+[a-z]+){0,3}\s+(?:behauptet|gesagt|geschrieben|erklart|erklaert|versprochen|zugesagt|claimed|said|stated|written|promised)\s*,?\s*(?:dass|das|that)\b/g;
-  const R5I_DENY_STOP = /[,;:()\[\]{}"„“”«»]|[–—]|\s-\s|(^|[^a-z])(?:denn|weil|da|und|oder|sowie|allerdings|vielmehr|sondern|aber|doch|jedoch|zwar|obwohl|dennoch|trotzdem|ausserdem|ebenso|auch|but|however|because|since|and|or|although|though|while|whereas|rather|instead|yet|also)(?![a-z])/;
-  function r5iDeniedReport(norm, idx) {
+  // "|" mit Leerzeichen („ | “) trennt; ohne Leerzeichen („ist|es“) nimmt die Normalisierung das Zeichen schon raus.
+  const R5I_DENY_STOP = /[,;:()\[\]{}"„“”«»]|[–—]|\s-\s|\s\|\s|\s\||\|\s|(^|[^a-z])(?:denn|weil|da|und|oder|sowie|allerdings|vielmehr|sondern|aber|doch|jedoch|zwar|obwohl|dennoch|trotzdem|ausserdem|ebenso|auch|but|however|because|since|and|or|although|though|while|whereas|rather|instead|yet|also)(?![a-z])/;
+  // Schrägstrich trennt nur mit Leerraum oder zwischen Wörtern, nicht in Einheiten, Daten oder Brüchen (m/s, km/h, 12/2024, 1/2).
+  const R5I_UNIT_TOKEN = /^(s|h|min|mins|m|km|cm|mm|l|ml|kg|g|mg|ug|mol|mmol|a|v|w|hz|pa|n|j|kb|mb|gb|tb|px|dpi|bps|bit|byte|fps|mph|bar|psi|ppm|ppb|iu|ie|sec|sek|std)$/i;
+  function r5iSlashIsSep(src, i) {
+    if (src[i] !== "/") return false;
+    const lch = src[i - 1] || "", rch = src[i + 1] || "";
+    if (/\s/.test(lch) || /\s/.test(rch)) return true;       // „ist / es“, „ist /es“, „ist/ es“
+    if (/\d/.test(lch) || /\d/.test(rch)) return false;      // 1/2, 12/2024, 3/4
+    const left = (src.slice(0, i).match(/[a-zäöüß]+$/i) || [""])[0];
+    const right = (src.slice(i + 1).match(/^[a-zäöüß]+/i) || [""])[0];
+    if (!left || !right) return false;
+    if (R5I_UNIT_TOKEN.test(left) && R5I_UNIT_TOKEN.test(right)) return false; // m/s, km/h
+    return true;                                             // ist/es, bewiesen/erwiesen
+  }
+  function r5iTailHasSepSlash(N, from, to) {
+    if (!N || !N.src || !N.map || from >= to) return false;
+    const a = N.map[from] != null ? N.map[from] : 0;
+    const b = N.map[to] != null ? N.map[to] : (N.map[to - 1] != null ? N.map[to - 1] + 1 : N.src.length);
+    if (b <= a) return false;
+    for (let k = a; k < b && k < N.src.length; k++) if (r5iSlashIsSep(N.src, k)) return true;
+    return false;
+  }
+  function r5iDeniedReport(N, idx) {
+    const norm = (N && typeof N === "object" && typeof N.norm === "string") ? N.norm : String(N || "");
     const seg = norm.slice(0, idx), cut = Math.max(seg.lastIndexOf("."), seg.lastIndexOf("!"), seg.lastIndexOf("?"));
-    const sent = seg.slice(cut + 1);
+    const sentAt = cut + 1;
+    const sent = seg.slice(sentAt);
     let head = null, m; R5I_DENY_HEAD.lastIndex = 0;
     while ((m = R5I_DENY_HEAD.exec(sent)) !== null) { head = m; if (!m[0].length) R5I_DENY_HEAD.lastIndex++; }
     if (!head) return false;
     const tail = sent.slice(head.index + head[0].length);
-    if (R5I_DENY_STOP.test(tail)) return false;               // Satzende des dass-Satzes erreicht: wieder Gewissheit
+    const tailAt = sentAt + head.index + head[0].length;
+    if (R5I_DENY_STOP.test(tail) || r5iTailHasSepSlash(N, tailAt, idx)) return false; // Satzende des dass-Satzes: wieder Gewissheit
     const re = new RegExp(CF_CLAIM_CERT.source, CF_CLAIM_CERT.flags.replace("g", "") + "g");
     let ok = true, prevEnd = -1, c;
     while ((c = re.exec(tail)) !== null) {
@@ -4424,7 +4449,7 @@ const ENGINE = (function () {
     CF_CLAIM_CERT.lastIndex = 0; let m;
     while ((m = CF_CLAIM_CERT.exec(t)) !== null) {
       const pre = t.slice(Math.max(0, m.index - 40), m.index).split(/[,;:.!?]/).pop().split(" ").filter(Boolean).slice(-5).join(" ");
-      if (r5iDeniedReport(t, m.index)) continue;
+      if (r5iDeniedReport(N, m.index)) continue;
       if (cfNegCount(pre) % 2 === 1 || (!isClaim && cfTest(CF_ATTRIB, pre)) || cfTest(CF_HEDGE_NEAR, pre) || /\b(nicht|not)\b/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 12))) continue;
       out.push(cfOrig(N, m.index, m.index + m[0].length));
     }
