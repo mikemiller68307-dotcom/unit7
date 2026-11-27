@@ -804,7 +804,7 @@ describe("Runde 5j – selbst formulierte Beispiele", () => {
     expect([...cf("Die Wand ist 2 Meter hoch und 3 Meter breit.", "Die Wand ist 2 Meter hoch und 5 Meter breit.").statuses]).toContain("INCONSISTENT");
     expect([...cf("Die Wand ist 2 Meter hoch und 3 Meter breit.", "Die Wand ist 3 Meter breit.").statuses]).not.toContain("INCONSISTENT");
     expect([...cf("Der Schrank ist 40 cm, die Tür 60 cm.", "Der Schrank ist 40 cm, die Tür 60 cm.").statuses]).not.toContain("INCONSISTENT");
-    expect([...cf("Der Schrank ist 40 cm, die Tür 60 cm.", "Das Fenster ist 90 cm.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Der Schrank ist 40 cm, die Tür 60 cm.", "Das Fenster ist 90 cm.").statuses]).toContain("INCONSISTENT");
     expect([...cf("Der Schrank ist 40 cm, die Tür 60 cm.", "Die Tür ist 90 cm.").statuses]).toContain("INCONSISTENT");
     expect([...cf("Der Schrank ist 40 cm.", "Der Schrank ist 70 cm.").statuses]).toContain("INCONSISTENT");
   });
@@ -818,9 +818,9 @@ describe("Runde 5j – selbst formulierte Beispiele", () => {
     expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 2,5 Stunden.").statuses]).not.toContain("INCONSISTENT");
     expect([...cf("Die Pause dauert 90 Minuten.", "Die Pause dauert 1 Stunde und 30 Minuten.").statuses]).not.toContain("INCONSISTENT");
     expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 3 Stunden.").statuses]).toContain("INCONSISTENT");
-    // (c) mehrere Anteile gegen eine kürzere gleichwertige Angabe
-    expect([...cf("Es sind 50 % und 25 %.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
-    expect([...cf("Die eine Hälfte und ein Viertel.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
+    // (c) mehrere Anteile gegen eine kürzere Angabe: nicht auf der Whitelist (keine gemischten Einheiten, kein „insgesamt“), daher 5i-paarweise — INCONSISTENT. Eine breite Summe würde hier die Zufallssummen-Lücke wieder öffnen.
+    expect([...cf("Es sind 50 % und 25 %.", "Es sind 75 %.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Die eine Hälfte und ein Viertel.", "Es sind 75 %.").statuses]).toContain("INCONSISTENT");
     expect([...cf("Es sind 50 % und 25 %.", "Es sind 80 %.").statuses]).toContain("INCONSISTENT");
   });
   it("T04 Nachschärfung: getrennt bezeichnete Gegenstände gleicher Art nicht addieren", () => {
@@ -836,7 +836,30 @@ describe("Runde 5j – selbst formulierte Beispiele", () => {
     expect([...cf("Tank A fasst 40 Liter, Tank B fasst 60 Liter.", "Tank A fasst 70 Liter, Tank B fasst 60 Liter.").statuses]).toContain("INCONSISTENT");
     // Summe nur bei Teilen desselben Bezugs (Dauer, Anteile ohne eigene Bezeichnung)
     expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 150 Minuten.").statuses]).not.toContain("INCONSISTENT");
-    expect([...cf("Es sind 50 % und 25 %.", "Es sind 75 %.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Es sind 50 % und 25 %.", "Es sind 75 %.").statuses]).toContain("INCONSISTENT");
+  });
+  it("T04 Nachschärfung: Summe nur bei zusammengesetzter Angabe oder ausdrücklich gekennzeichneter Gesamtsumme", () => {
+    // schwache Bezeichnungen: Zufallssumme bleibt ein Konflikt
+    expect([...cf("Anna wiegt 40 kg, Ben wiegt 60 kg.", "Das Gewicht beträgt 100 kg.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Annas Anteil beträgt 40 %, Bens Anteil beträgt 60 %.", "Der Anteil beträgt 100 %.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Der rote Behälter fasst 40 l, der blaue Behälter fasst 60 l.", "Es sind 100 l.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("A fasst 40 Liter, B fasst 60 Liter.", "Der Vorrat umfasst 100 Liter.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Der eine Wagen wiegt 2 Tonnen, der andere Wagen wiegt 3 Tonnen.", "Das Gewicht beträgt 5 Tonnen.").statuses]).toContain("INCONSISTENT");
+    expect([...cf("Der Tank fasst 40 Liter, der Tank fasst 60 Liter.", "Der Vorrat umfasst 100 Liter.").statuses]).toContain("INCONSISTENT");
+    // Whitelist: gemischte Einheiten einer Größe, ohne Nomen dazwischen
+    expect([...cf("Die Fahrt dauert 2 Stunden und 30 Minuten.", "Die Fahrt dauert 150 Minuten.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Die Stange ist 1 Meter 20 cm lang.", "Die Stange ist 120 cm lang.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Das Paket wiegt 1 kg 500 g.", "Das Paket wiegt 1500 g.").statuses]).not.toContain("INCONSISTENT");
+    // Whitelist: ausdrücklich gekennzeichnete Summe ohne Unterscheidungswort zwischen den Teilen
+    expect([...cf("Es sind 40 Liter und 60 Liter zusammen.", "Es sind 100 Liter.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("Es sind 40 Liter und 60 Liter insgesamt.", "Es sind 100 Liter.").statuses]).not.toContain("INCONSISTENT");
+    expect([...cf("The load is 40 kg and 60 kg total.", "The load is 100 kg.").statuses]).not.toContain("INCONSISTENT");
+    // mit Unterscheidungswort auch bei „zusammen“ nicht addieren
+    expect([...cf("Tank A fasst 40 Liter und Tank B fasst 60 Liter zusammen.", "Es sind 100 Liter.").statuses]).toContain("INCONSISTENT");
+    // abweichende Gesamtsumme bleibt Konflikt
+    expect([...cf("Das Paket wiegt 1 kg 500 g.", "Das Paket wiegt 2000 g.").statuses]).toContain("INCONSISTENT");
+    // verschiedene Gegenstandswörter: wieder 5i-paarweise
+    expect([...cf("Der Schrank ist 40 cm, die Tür 60 cm.", "Das Fenster ist 90 cm.").statuses]).toContain("INCONSISTENT");
   });
   it("T08: korrekte Nachrechnung der Vorgabe ist kein Spiegelungsindikator", () => {
     const ok = ENGINE.counterfactual([

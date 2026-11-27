@@ -2893,13 +2893,86 @@ const ENGINE = (function () {
     const id = extraId || r5jIdNear(sent, noun, nounAt);
     return { noun: noun ? noun.toLowerCase() : "", dm: dm || "", id: id || "" };
   }
-  function r5jCanSum(list) {
-    if (!list || list.length < 2) return true;
-    const ids = list.map(g => (g.r && g.r.id) || "").filter(Boolean);
-    const uniq = new Set(ids);
-    if (uniq.size > 1) return false;
-    if (uniq.size === 1 && ids.length !== list.length) return false;
+  function r5jValueEnd(t, x) {
+    if (typeof x.idx !== "number") return null;
+    const sl = t.slice(x.idx);
+    const m = sl.match(new RegExp("^(?:" + CF_NUM + ")\\s*(?:" + CF_UNIT_SRC + ")", "i"));
+    if (m) return x.idx + m[0].length;
+    const c = sl.match(/^\d[\d.,]*\s*[^\s,;:]+/);
+    return c ? x.idx + c[0].length : null;
+  }
+  function r5jGapBetween(ans, a, b) {
+    const t = cfPreNum(String(ans || ""));
+    if (typeof a.idx !== "number" || typeof b.idx !== "number") return null;
+    const lo = a.idx <= b.idx ? a : b, hi = a.idx <= b.idx ? b : a;
+    const end = r5jValueEnd(t, lo);
+    if (end == null || end > hi.idx) return null;
+    return t.slice(end, hi.idx);
+  }
+  function r5jGapClean(gap) {
+    if (gap == null) return false;
+    if (/[.!?;]/.test(gap)) return false;
+    let g = " " + gap + " ";
+    g = g.replace(new RegExp("(?:^|[^a-zäöüß])(?:" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi"), " ");
+    g = g.replace(/[\d.,]+/g, " ");
+    g = g.replace(/\b(und|and|plus|sowie)\b/gi, " ");
+    g = g.replace(/[+,;:()\/]/g, " ");
+    return !g.replace(/\s+/g, "").length;
+  }
+  function r5jGapsClean(ans, vals) {
+    if (!vals || vals.length < 2) return true;
+    const ordered = vals.slice().sort((a, b) => a.idx - b.idx);
+    for (let i = 0; i < ordered.length - 1; i++) {
+      if (!r5jGapClean(r5jGapBetween(ans, ordered[i], ordered[i + 1]))) return false;
+    }
     return true;
+  }
+  function r5jUnitKey(ans, x) {
+    const lab = String(x.label || "");
+    const m = lab.match(/([A-Za-zÄÖÜäöüß%‰°€$µμ]+)\s*$/);
+    if (m) {
+      const d = cfUnitDef(m[1]);
+      if (d) return { fam: d[1], key: d[3] || d[1] };
+      return { fam: x.dim || "", key: m[1].toLowerCase() };
+    }
+    return { fam: x.dim || "", key: lab.toLowerCase() };
+  }
+  function r5jIsCompoundMixed(ans, vals) {
+    if (!vals || vals.length < 2) return false;
+    const keys = vals.map(x => r5jUnitKey(ans, x));
+    if (keys.some(k => !k.fam || !k.key)) return false;
+    if (new Set(keys.map(k => k.fam)).size !== 1) return false;
+    if (new Set(keys.map(k => k.key)).size < 2) return false;
+    return r5jGapsClean(ans, vals);
+  }
+  const R5J_TOTAL = /\b(zusammen|insgesamt|in\s+summe|total)\b/i;
+  function r5jHasTotalMark(ans, vals) {
+    const t = cfPreNum(String(ans || ""));
+    if (!vals || !vals.length) return R5J_TOTAL.test(t);
+    const ordered = vals.slice().sort((a, b) => a.idx - b.idx);
+    const head = t.slice(0, ordered[0].idx);
+    const sentStart = Math.max(0, head.lastIndexOf(".") + 1, head.lastIndexOf("!") + 1, head.lastIndexOf("?") + 1);
+    const lastEnd = r5jValueEnd(t, ordered[ordered.length - 1]);
+    if (lastEnd == null) return false;
+    const tail = t.slice(lastEnd);
+    const cut = tail.search(/[.!?]/);
+    const sentEnd = lastEnd + (cut < 0 ? tail.length : cut + 1);
+    return R5J_TOTAL.test(t.slice(sentStart, sentEnd));
+  }
+  function r5jSideSummable(ans, vals) {
+    if (!vals || vals.length < 2) return true;
+    const mixed = r5jIsCompoundMixed(ans, vals);
+    const mark = r5jHasTotalMark(ans, vals);
+    const gaps = r5jGapsClean(ans, vals);
+    if (mixed) return true;
+    if (mark && gaps) return true;
+    return false;
+  }
+  function r5jWhitelistEquiv(ansA, A, ansB, B) {
+    if (!A.length || !B.length) return false;
+    if (r5jBagsEqual(A, B)) return true;
+    if (!r5jSideSummable(ansA, A) || !r5jSideSummable(ansB, B)) return false;
+    return r5jBagEquivalent(A, B);
   }
   function r5jRefsCompatible(a, b) {
     if (a.noun && b.noun && a.noun !== b.noun) return false;
@@ -2939,26 +3012,29 @@ const ENGINE = (function () {
   function r5jDistinctDms(list) { return [...new Set(list.map(g => g.r.dm).filter(Boolean))]; }
   function r5jDimConflicts(ansA, A, ansB, B, dim) {
     if (A.length < 2 && B.length < 2) return null; // Einzelfall: bestehende Logik (inkl. 5i-Hinweis)
+    if (r5jBagsEqual(A, B)) return [];
     const gA = A.map(x => ({ x, r: r5jRefOf(ansA, x) }));
     const gB = B.map(x => ({ x, r: r5jRefOf(ansB, x) }));
     const hasRef = [...gA, ...gB].some(g => g.r.noun || g.r.dm);
     if (!hasRef) {
-      if (r5jBagEquivalent(A, B)) return [];
+      if (r5jWhitelistEquiv(ansA, A, ansB, B)) return [];
       return null;
     }
     const hard = [];
     function report(aG, bG, key) {
       const aVals = aG.map(g => g.x), bVals = bG.map(g => g.x);
       if (!aVals.length || !bVals.length) return;
-      const sumOk = r5jCanSum(aG) && r5jCanSum(bG) && r5jCanSum([...aG, ...bG]);
-      if (sumOk ? r5jBagEquivalent(aVals, bVals) : r5jBagsEqual(aVals, bVals)) return;
+      const mixedDm = r5jDistinctDms(aG).length > 1 || r5jDistinctDms(bG).length > 1;
+      if (!mixedDm && r5jWhitelistEquiv(ansA, aVals, ansB, bVals)) return;
+      if (r5jBagsEqual(aVals, bVals)) return;
       hard.push({ dim, key, a: aVals.map(x => x.label).join(", "), b: bVals.map(x => x.label).join(", ") });
     }
     function softOrConflict(aG, bG, key, allowOverlap, allowSum) {
       const aVals = aG.map(g => g.x), bVals = bG.map(g => g.x);
       if (!aVals.length || !bVals.length) return;
-      const sumOk = allowSum !== false && r5jCanSum(aG) && r5jCanSum(bG) && r5jCanSum([...aG, ...bG]);
-      if (sumOk ? r5jBagEquivalent(aVals, bVals) : r5jBagsEqual(aVals, bVals)) return;
+      const mixedDm = r5jDistinctDms(aG).length > 1 || r5jDistinctDms(bG).length > 1;
+      const sumOk = allowSum !== false && !mixedDm;
+      if (sumOk ? r5jWhitelistEquiv(ansA, aVals, ansB, bVals) : r5jBagsEqual(aVals, bVals)) return;
       if (allowOverlap && aVals.some(x => bVals.some(y => cfOverlap(x, y)))) return;
       hard.push({ dim, key, a: aVals.map(x => x.label).join(", "), b: bVals.map(x => x.label).join(", ") });
     }
@@ -3017,17 +3093,12 @@ const ENGINE = (function () {
       } else softOrConflict(aNn, bNn, n, true);
     }
     // Eine Seite hat einen Gegenstand, die andere ist ohne Gegenstandswort: nur dann zusammenlegen, wenn nicht mehrere Gegenstände im Spiel sind.
-    const aU = aN.filter(g => !g.r.noun), bU = bN.filter(g => !g.r.noun);
     if (nouns.length === 1) {
       const n = nouns[0];
       const aParts = aN.filter(g => !g.r.noun || g.r.noun === n);
       const bParts = bN.filter(g => !g.r.noun || g.r.noun === n);
       if (aParts.length && bParts.length && !pairedNouns.has(n))
         softOrConflict(aParts, bParts, n, true);
-    } else if (!nounsA.length && !nounsB.length && aU.length && bU.length) {
-      if (r5jBagEquivalent(aU.map(g => g.x), bU.map(g => g.x))) { /* gleich oder Summe */ }
-      else if (!aU.some(g => bU.some(h => cfOverlap(g.x, h.x))))
-        hard.push({ dim, key: "", a: aU.map(g => g.x.label).join(", "), b: bU.map(g => g.x.label).join(", ") });
     }
 
     // Rest: eine Seite nennt nur den Gegenstand ohne Maßwort, die andere hat Maßwörter (Höhe/Breite). Nicht über verschiedene Maße summieren.
@@ -3045,16 +3116,9 @@ const ENGINE = (function () {
         softOrConflict(aDm, bBare, n, dmsA.length > 1, dmsA.length <= 1);
       }
     }
-    // Gleicher Gegenstandstyp mit verschiedenen Bezeichnern gegen eine unpassende Gesamtsumme: nicht addieren, 5i-paarweise.
-    if (!hard.length) {
-      const labeled = list => new Set(list.map(g => g.r.id).filter(Boolean)).size > 1;
-      const oneKind = list => new Set(list.map(g => g.r.noun).filter(Boolean)).size <= 1;
-      if ((labeled(gA) && oneKind(gA)) || (labeled(gB) && oneKind(gB))) {
-        if (!r5jBagsEqual(A, B) && !A.some(a => B.some(b => cfOverlap(a, b))))
-          hard.push({ dim, key: "", a: A.map(x => x.label).join(", "), b: B.map(x => x.label).join(", ") });
-      }
-    }
-    return hard;
+    if (hard.length) return hard;
+    if (r5jWhitelistEquiv(ansA, A, ansB, B)) return [];
+    return null; // 5i-paarweise (auch bei verschiedenen Gegenstandswörtern und Zufallssummen)
   }
 
   // (5) T08: richtige Nachrechnung der Prämisse ist kein Spiegelungsindikator
