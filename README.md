@@ -1,6 +1,6 @@
 # Unit 7 – AI Provenance & Evidence Auditor
 
-**Origin & Architecture Lead:** Mike Enenkel · **Mensch maschine projekt (MMP)**, Wissembourg, France (2026)
+**Origin & Architecture Lead:** Mike Enenkel · **Mensch-Maschine-Projekt (MMP)**, Mannheim, Germany (2026)
 
 Unit 7 is a deterministic provenance and evidence auditor for AI-generated empirical statements. It does **not** claim to measure psychological "intent" or "honesty" of a model. Instead, it separates atomic claims into:
 
@@ -43,4 +43,4 @@ npm test
 npm run build
 ```
 
-© 2026 Mike Enenkel / Mensch maschine projekt (MMP). All rights reserved.
+© 2026 Mike Enenkel / Mensch-Maschine-Projekt (MMP). All rights reserved.
