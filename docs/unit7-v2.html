@@ -167,20 +167,27 @@
 <body>
 <script>
 /* Start-Check: sehr alte Browser (z. B. Safari < 16.4) sichtbar warnen statt still zu versagen */
-(function(){ var old = false; try { new RegExp("(?<=a)b"); } catch (e) { old = true; }
-  if (old) document.addEventListener("DOMContentLoaded", function(){ var d = document.createElement("div");
+(function(){
+  var reasons = [];
+  try { new RegExp("(?<=a)b"); } catch (e) { reasons.push("Lookbehind in Suchmustern"); }
+  try { if (!new RegExp("\\p{L}", "u").test("A") || !new RegExp("\\p{L}", "u").test("ä")) throw 1; } catch (e) { reasons.push("Unicode-Buchstabenklassen"); }
+  if (!(window.crypto && crypto.subtle && typeof crypto.subtle.digest === "function")) reasons.push("pruefen von Datei-Pruefwerten im Browser");
+  if (typeof String.prototype.normalize !== "function") reasons.push("Unicode-Normalisierung");
+  if (!reasons.length) return;
+  document.addEventListener("DOMContentLoaded", function(){ var d = document.createElement("div");
     d.setAttribute("role", "alert"); d.style.cssText = "background:#7a2;color:#fff;padding:10px 14px;font:14px sans-serif";
-    d.textContent = "Hinweis: Dieser Browser ist älter (z. B. Safari vor 16.4). Die App läuft, einige Text-Erkennungen im Gegenfragen-Vergleich arbeiten aber eingeschränkt.";
-    document.body.insertBefore(d, document.body.firstChild); }); })();
+    d.textContent = "Hinweis: Dieser Browser unterstuetzt nicht alles, was die App nutzen kann (" + reasons.join(", ") + "). Die App laeuft trotzdem; einzelne Erkennungen oder Datei-Pruefungen koennen eingeschraenkt sein.";
+    document.body.insertBefore(d, document.body.firstChild); });
+})();
 </script>
 
 <header>
   <div class="topbar">
     <div>
       <h1>Unit 7 – V2 / The Human Layer</h1>
-      <div class="sub">AI Provenance &amp; Evidence Auditor · dreistufige Verantwortungskette · deterministisch, ohne KI-API, ohne Backend-Upload</div>
+      <div class="sub">Prüft, ob eine KI-Antwort zu den vorgelegten Belegen passt. Drei Ebenen, feste Regeln, ohne Netz und ohne KI-Dienst.</div>
     </div>
-    <button class="ghost themebtn no-print" onclick="toggleTheme()">◐ Modus</button>
+    <button class="ghost themebtn no-print" onclick="toggleTheme()" aria-label="Zwischen heller und dunkler Darstellung wechseln" title="Helle oder dunkle Darstellung">◐ Hell / Dunkel</button>
   </div>
   <div class="credo">
     <strong>Grundsatz:</strong> Die KI ist Zeuge und Werkzeug – nie der Täter.
@@ -208,7 +215,8 @@
 
     <div class="card">
       <h2>① Verantwortungskette erfassen</h2>
-      <div class="hint">Drei Ebenen getrennt protokollieren. Nichts vermischen. Jede Angabe wird mit SHA-256 gestempelt; Ausführung nur über Ed25519-signierte Manifeste.</div>
+      <div class="hint">Drei Ebenen getrennt eintragen, nichts vermischen. Jede Angabe bekommt einen Prüfwert (SHA-256). Eine Ausführung gilt nur dann als belegt, wenn ein unterschriebenes Messprotokoll (Manifest, Ed25519) vorliegt.</div>
+      <div class="hint" style="margin-top:6px" id="r5jHelpAudit">Hilfe: Ebene 1 ist die Frage an die KI, Ebene 2 die wörtliche Antwort, Ebene 3 das, was später daraus gemacht wird. Das Manifest brauchst du nur, wenn ein Werkzeug seine Messung unterschrieben hat. Ohne Manifest lautet das Ergebnis „nicht belegt“, nicht „stimmt nicht“.</div>
       <div class="hint" style="margin-top:6px"><b>Wichtig für Einsteiger:</b> Ohne signiertes Protokoll (Manifest) kann die App eine KI-Antwort nicht bestätigen – sie zeigt nur, was belegt ist und was nicht. Bei normalen Chatbots gibt es so ein Protokoll meist nicht; das Ergebnis ist dann „nicht belegt“, nicht „falsch“. Grau „kein Befund“ heißt: nichts Auffälliges gefunden – nicht: „stimmt“. Das Manifest und die Referenzdatei brauchst du nur, wenn ein Werkzeug seine Messung signiert hat.</div>
       <div class="lanes">
         <div class="lane">
@@ -259,6 +267,16 @@
         <button class="ghost" onclick="loadDemo()">Demo laden</button>
         <button class="ghost" onclick="resetAudit()">Zurücksetzen</button>
       </div>
+      <details id="r5jToolkit" style="margin-top:10px"><summary>Fragen, die du zurückstellen kannst</summary>
+        <div class="hint" style="margin-top:6px">Kurze Nachfragen, die du der KI selbst stellen kannst. Die App schickt nichts ab.</div>
+        <ul id="r5jToolkitList" style="margin:8px 0 0 1.2em;line-height:1.5">
+          <li>Kannst du die Zahl an einer Quelle zeigen?</li>
+          <li>Was davon ist gemessen, was nur behauptet?</li>
+          <li>Was bleibt unsicher?</li>
+          <li>Wie lautet die Antwort, wenn ich die Frage neutral stelle?</li>
+          <li>Welche Annahme steckt in der Vorgabe?</li>
+        </ul>
+      </details>
       <div class="hint" style="margin-top:10px">Kein Manifest vorhanden? → Ausführungsangaben erscheinen als <b>Unverified</b>, niemals als „gelogen“.</div>
     </div>
 
@@ -344,7 +362,7 @@
           <tr><td><span class="badge b-yellow">TEILWEISE_BELEGT</span></td><td>Signatur und Messwerte sind belegt, aber nicht alles: z. B. Vorgabe nicht signiert, Aussagen ohne Messwert oder Zeitstempel fehlt/ungültig. Kein Fehler – nur nicht vollständig geprüft.</td></tr>
           <tr><td><span class="badge b-gray">KEIN_BEFUND</span></td><td>Keine Auffälligkeit in den geprüften Mustern. Das ist kein Beleg, dass die Antwort stimmt; nicht geprüft werden u. a. System-Prompt/Kontext (außer eingefügt), Few-Shot-Beispiele, weggelassene Quellen, Ironie, Fremdsprachen, Fachjargon.</td></tr>
           <tr><td><span class="badge b-yellow">WARNUNG</span></td><td>Antwort stimmt nur nach Angleichen von Leerzeichen, Zeilenenden oder Unicode-Form mit dem signierten Hash überein – inhaltlich gleich, aber nicht byte-genau.</td></tr>
-          <tr><td><span class="badge b-yellow">INJECTION_TRACE</span></td><td>Text, der wie eine Steueranweisung aussieht („ignoriere alle vorherigen Anweisungen“ …). Zitate werden ebenfalls markiert. Wird nur als Daten behandelt; Hinweis, kein Integritätsbruch.</td></tr>
+          <tr><td><span class="badge b-yellow">INJECTION_TRACE</span></td><td>Text, der wie eine Steueranweisung aussieht („ignoriere alle vorherigen Anweisungen“ …). Ein klar zugeschriebenes Zitat gilt nicht als Anweisung; nackter Aufforderungstext schon. Wird nur als Daten behandelt; Hinweis, kein Integritätsbruch.</td></tr>
           <tr><td><span class="badge b-green">ÜBEREINSTIMMEND</span></td><td>Ebenen 1–3 widersprechen sich nicht (Matrix).</td></tr>
           <tr><td><span class="badge b-red">CONTRADICTED</span></td><td>Konflikt mit signiertem Beleg oder Arithmetikwiderspruch.</td></tr>
           <tr><td><span class="badge b-red">TAMPERED</span></td><td>Integritätsverletzung: invalid_signature, answer_hash_mismatch oder prompt_hash_mismatch. Keine Täter-Zuschreibung.</td></tr>
@@ -1140,11 +1158,12 @@ const ENGINE = (function () {
 
     /* ---- E ---- */
     let E;
-    const inj = injectionTrace([prompt, answer, claim, logText]);
-    for (const h of detectTricks(answer || "", "answer")) if (h.signal === "OVERRIDE" && !inj.includes(h.trigger)) inj.push(h.trigger);
+    const injRaw = injectionTrace([prompt, answer, claim, logText]);
+    const inj = r5jFilterInjection([prompt, answer, claim, logText], injRaw);
+    for (const h of detectTricks(answer || "", "answer")) if (h.signal === "OVERRIDE" && !inj.includes(h.trigger) && ![prompt, answer, claim, logText].some(t => t && r5jAttributedQuote(t, h.trigger))) inj.push(h.trigger);
     if (inj.length) {
       findings.E.push({ code: "prompt_injection_trace", ok: false,
-        text: "Text gefunden, der wie eine Steueranweisung aussieht (Zitate werden ebenfalls markiert; Prüfmaterial wird ausschließlich als Daten behandelt): „" +
+        text: "Text gefunden, der wie eine Steueranweisung aussieht (ein klar zugeschriebenes Zitat gilt nicht als Anweisung; Prüfmaterial wird ausschließlich als Daten behandelt): „" +
           inj.slice(0, 2).join("“, „") + "“." });
       E = { status: "INJECTION_TRACE", code: "prompt_injection_trace" };
     } else {
@@ -1242,7 +1261,7 @@ const ENGINE = (function () {
       else checks.push({ status: "CONTRADICTED", text: (r.kind === "cmp" ? "Vergleich falsch: „" : "Rechenfehler: „") + r.expr + "“ – nachgerechnet: " + r.computedText + "." });
     }
     for (const u of cfArithUnchecked(answer).slice(0, 4)) checks.push({ status: "NOT_TESTABLE", text: "Rechnung „" + u.expr + "“ nicht geprüft: " + u.why + "." });
-    for (const n of r5iSplitArith(answer).negated.slice(0, 4)) checks.push({ status: "NOT_TESTABLE", code: "arith_named_false", text: n.text });
+    for (const n of r5jSplitArith(answer).negated.slice(0, 4)) checks.push({ status: "NOT_TESTABLE", code: "arith_named_false", text: n.text });
     if (prompt) for (const c of countChecks(prompt, answer)) checks.push(c);
     return checks;
   }
@@ -2738,6 +2757,425 @@ const ENGINE = (function () {
     return null;
   }
 
+  /* ================= Runde 5j ================= */
+  // (1) Rechnung in Satz N, nächster Satz benennt oder berichtigt sie: kein Rechenfehler des Sprechers.
+  const R5J_NEXT_FALSE = /^\s*((das|dies|diese rechnung|dieser wert|das ergebnis|that|this|it)\s+(ist|war|is|was)\s+(doch\s+|leider\s+|einfach\s+|so\s+)?(falsch|unzutreffend|unrichtig|nicht richtig|nicht korrekt|nicht wahr|ein irrtum|ein rechenfehler)|(das|dies|that)\s+stimmt(\s+so)?\s+nicht|(das|dies)\s+trifft(\s+so)?\s+nicht zu|(falsch|unzutreffend|unrichtig|ein irrtum|ein rechenfehler))\s*[.!?]?\s*$/i;
+  const R5J_NEXT_DBL = /^\s*(das|dies|that|this|it)\s+(ist|is|war|was)\s+nicht\s+(falsch|unzutreffend|unrichtig|ein irrtum)\b/i;
+  const R5J_NEXT_CORR = /^\s*((richtig|korrekt|zutreffend)\s+ist|der richtige wert ist|in wahrheit|vielmehr|stattdessen|rather|instead|the correct(?:\s+value)?\s+is|the right value is)\b/i;
+  const R5J_NEXT_COMBO = /^\s*((das|dies|that|this|it)\s+(ist|is|war|was)\s+(doch\s+|leider\s+|einfach\s+|so\s+)?(falsch|unzutreffend|unrichtig|nicht richtig|nicht korrekt|nicht wahr|wrong|incorrect)|(falsch|unzutreffend|unrichtig|wrong|incorrect))\s*[,;:]\s*/i;
+  function r5jCorrNumbers(s, r) {
+    const nums = String(s || "").match(/-?\d[\d.,]*/g) || [];
+    if (!nums.length) return true;
+    return nums.some(n => { const v = parseNum(n); return v !== null && r.computed !== undefined && Math.abs(v - r.computed) <= 1e-9 * Math.max(1, Math.abs(r.computed)); });
+  }
+  function r5jNextCorrects(next, r) {
+    const s = String(next || "").trim();
+    if (!s || R5J_NEXT_DBL.test(s)) return false;
+    if (R5J_NEXT_FALSE.test(s)) return true;
+    if (R5J_NEXT_CORR.test(s)) return r5jCorrNumbers(s, r);
+    const cm = s.match(R5J_NEXT_COMBO);
+    if (cm && R5J_NEXT_CORR.test(s.slice(cm[0].length))) return r5jCorrNumbers(s.slice(cm[0].length), r);
+    return false;
+  }
+  function r5jSplitArith(text) {
+    const t = String(text || "");
+    const base = r5iSplitArith(t);
+    if (t.length > 50000) return base;
+    const sents = splitSentences(t);
+    if (sents.length < 2) return base;
+    const extra = [];
+    for (let i = 0; i < sents.length - 1; i++) {
+      const a = cfArith5c(sents[i]), n = a.checked.length + a.unchecked.length;
+      if (n !== 1 || a.checked.length !== 1) continue;
+      const r = a.checked[0];
+      if (!r5jNextCorrects(sents[i + 1], r)) continue;
+      let reassert = false;
+      for (let j = i + 1; j < sents.length; j++) {
+        if (j === i + 1 && r5jNextCorrects(sents[j], r) && !cfArith5c(sents[j]).checked.length) continue;
+        if (cfArith5c(sents[j]).checked.some(x => r5iKey(x) === r5iKey(r) && !r5iClauseNeg(sents[j], x))) { reassert = true; break; }
+      }
+      if (reassert) continue;
+      extra.push(r);
+    }
+    if (!extra.length) return base;
+    const drop = new Set(extra.map(r5iKey));
+    // nur streichen, wenn die gleiche Rechnung nicht unverneint in einem anderen Satz steht
+    const keep = base.checked.filter(r => !drop.has(r5iKey(r)));
+    const added = extra.filter(r => !base.negated.some(n => n.expr === r.expr)).map(r => ({ expr: r.expr, ok: r.ok, text: r.ok
+      ? "Rechnung „" + r.expr + "“ geht nachgerechnet auf (" + r.computedText + "), der nächste Satz bezeichnet sie aber als falsch. Bitte selbst prüfen."
+      : "Rechnung „" + r.expr + "“ wird im nächsten Satz als falsch benannt oder berichtigt (nachgerechnet: " + r.computedText + "). Kein Rechenfehler der Antwort." }));
+    return { checked: keep, unchecked: base.unchecked, negated: base.negated.concat(added) };
+  }
+
+  // (3) „garantiert/definitiv“ im verneinten dass-Satz: Schrägstrich zwischen zwei Gewissheitswörtern ist kein Satzende
+  const R5J_CERT_TOKEN = /^(bewiesen|erwiesen|belegt|nachgewiesen|gesichert|eindeutig|zweifelsfrei|zweifellos|definitiv|garantiert|nachweislich|hundertprozentig|proven|established|confirmed|definitely|certainly|guaranteed)$/i;
+  const r5iSlashIsSepBase = r5iSlashIsSep;
+  r5iSlashIsSep = function (src, i) {
+    if (!r5iSlashIsSepBase(src, i)) return false;
+    const lch = src[i - 1] || "", rch = src[i + 1] || "";
+    if (/\s/.test(lch) || /\s/.test(rch)) return true;
+    const left = (src.slice(0, i).match(/[a-zäöüß]+$/i) || [""])[0];
+    const right = (src.slice(i + 1).match(/^[a-zäöüß]+/i) || [""])[0];
+    if (R5J_CERT_TOKEN.test(left) && R5J_CERT_TOKEN.test(right)) return false;
+    return true;
+  };
+
+  // (4) T04: bei mehreren Werten derselben Größe nach Bezug gruppieren, damit ein gemeinsamer Wert keinen Konflikt verdeckt
+  const R5J_ART = /^(der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)$/i;
+  const R5J_NOTNOUN = /^(und|and|oder|or|aber|but|sowie|mit|von|vom|für|for|aus|auf|bei|als|wie|auch|noch|nur|dass|daß|then|than)$/i;
+  const R5J_DIMNOUN = /^(höhe|breite|länge|tiefe|dicke|weite|stärke|height|width|length|depth|thickness)$/i;
+  const R5J_IDSTOP = /^(ist|sind|war|waren|hat|hatte|haben|fasst|enthält|enthaelt|wiegt|misst|beträgt|betraegt|dauert|liegt|umfasst|umfasst|are|is|was|has|have|holds|contains|weighs|measures?|comes?|lasts|fass|liegt|wurde|werden|wird)$/i;
+  const R5J_VERB = R5J_IDSTOP;
+  const R5J_ORD = /^(erst(?:e|er|es|en|em)?|zweit(?:e|er|es|en|em)?|dritt(?:e|er|es|en|em)?|viert(?:e|er|es|en|em)?|fünft(?:e|er|es|en|em)?|fuenft(?:e|er|es|en|em)?|sechst(?:e|er|es|en|em)?|siebt(?:e|er|es|en|em)?|acht(?:e|er|es|en|em)?|neunt(?:e|er|es|en|em)?|zehnt(?:e|er|es|en|em)?|letzt(?:e|er|es|en|em)?|nächst(?:e|er|es|en|em)?|naechst(?:e|er|es|en|em)?|ander(?:e|er|es|en|em)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|next|other)$/i;
+  const R5J_POSL = /^(link(?:e|er|es|en|em)?|recht(?:e|er|es|en|em)?|ober(?:e|er|es|en|em)?|unter(?:e|er|es|en|em)?|vorder(?:e|er|es|en|em)?|hinter(?:e|er|es|en|em)?|left|right|upper|lower|front|rear|back)$/i;
+  const R5J_WORDID = /^(one|two|three|four|five|eins|zwei|drei|vier|fünf|fuenf)$/i;
+  function r5jNormId(s) {
+    const w = String(s || "");
+    const map = {erste:"1",erster:"1",erstes:"1",ersten:"1",erstem:"1",first:"1",
+      zweite:"2",zweiter:"2",zweites:"2",zweiten:"2",zweitem:"2",second:"2",
+      dritte:"3",dritter:"3",drittes:"3",dritten:"3",drittem:"3",third:"3",
+      vierte:"4",vierter:"4",viertes:"4",vierten:"4",viertem:"4",fourth:"4",
+      fünfte:"5",fünfter:"5",fünftes:"5",fünften:"5",fünftem:"5",fuenfte:"5",fifth:"5",
+      one:"1",eins:"1",two:"2",zwei:"2",three:"3",drei:"3",four:"4",vier:"4",five:"5",fünf:"5",fuenf:"5"};
+    const k = w.toLowerCase();
+    if (map[k]) return map[k];
+    if (/^\d+$/.test(w)) return w;
+    return w;
+  }
+  function r5jIdNear(sent, noun, nounAt) {
+    if (!noun) {
+      const pre = sent.match(/\b(\d+)\.\s*$/) || sent.match(/\b(erst(?:e|er|es|en|em)?|zweit(?:e|er|es|en|em)?|dritt(?:e|er|es|en|em)?|first|second|third)\s+$/i);
+      return pre ? r5jNormId(pre[1]) : "";
+    }
+    const at = sent.toLowerCase().lastIndexOf(noun.toLowerCase(), (nounAt == null ? sent.length : nounAt + noun.length) - 1);
+    const before = at >= 0 ? sent.slice(0, at) : sent;
+    const after = at >= 0 ? sent.slice(at + noun.length) : "";
+    const pre = before.match(/\b(\d+)\.\s*$/) || before.match(new RegExp("\\b(" + R5J_ORD.source.slice(1, -1) + "|" + R5J_POSL.source.slice(1, -1) + ")\\s+$", "i"));
+    if (pre) return r5jNormId(pre[1]);
+    const post = after.match(/^\s*([A-Z](?![A-Za-zÄÖÜäöüß])|[0-9]+|[IVXLCM]{1,6}(?![A-Za-zÄÖÜäöüß])|(?:one|two|three|four|five|eins|zwei|drei|vier|fünf|fuenf))\b/)
+      || after.match(/^\s+([A-Z][A-Za-z0-9ÄÖÜäöüß\-]{0,20})\b/);
+    if (post && !R5J_IDSTOP.test(post[1]) && !R5J_ART.test(post[1]) && !R5J_NOTNOUN.test(post[1]) && !R5J_DIMNOUN.test(post[1]))
+      return r5jNormId(post[1]);
+    return "";
+  }
+  function r5jRefOf(ans, x) {
+    const t = cfPreNum(String(ans || ""));
+    if (typeof x.idx !== "number") return { noun: "", dm: "", id: "" };
+    const r = r5iRefs(ans, [x], x.dim);
+    const part = r && r.part.size ? [...r.part][0] : "";
+    let dm = r && r.dm.size ? [...r.dm][0] : "";
+    let noun = "", nounAt = -1, extraId = "";
+    const sent = (t.slice(0, x.idx).split(/[.!?;]/).pop() || "");
+    const cands = [];
+    const copRe = /(?:\b(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+)?([A-Za-zÄÖÜäöüß]{3,})\s+(?:ist|sind|war|waren|hat|hatte|misst|beträgt|liegt|fasst|enthält|wiegt|dauert|umfasst|are|is|was|has|holds|contains|weighs|lasts|measures?|comes?)\b/gi;
+    let m;
+    while ((m = copRe.exec(sent))) { if (!R5J_ART.test(m[1]) && !R5J_NOTNOUN.test(m[1]) && !R5J_VERB.test(m[1]) && !R5J_WORDID.test(m[1]) && !R5J_ORD.test(m[1]) && !R5J_POSL.test(m[1])) cands.push({ n: m[1], at: m.index }); }
+    const preRe = /\b(?:der|die|das|dem|den|des|ein|eine|einem|einen|einer|eines|the|a|an)\s+([A-Za-zÄÖÜäöüß]{3,})\b/gi;
+    while ((m = preRe.exec(sent))) { if (!R5J_ART.test(m[1]) && !R5J_NOTNOUN.test(m[1]) && !R5J_VERB.test(m[1]) && !R5J_WORDID.test(m[1]) && !R5J_ORD.test(m[1]) && !R5J_POSL.test(m[1])) cands.push({ n: m[1], at: m.index }); }
+    const namedRe = /\b([A-Za-zÄÖÜäöüß]{3,})\s+([A-Z](?![A-Za-zÄÖÜäöüß])|[0-9]+|(?:one|two|three|four|five|eins|zwei|drei|vier|fünf|fuenf)\b)/g;
+    while ((m = namedRe.exec(sent))) {
+      if (!R5J_ART.test(m[1]) && !R5J_NOTNOUN.test(m[1]) && !R5J_IDSTOP.test(m[1]) && !R5J_DIMNOUN.test(m[1]))
+        cands.push({ n: m[1], at: m.index, id: r5jNormId(m[2]) });
+    }
+    if (cands.length) {
+      cands.sort((a, b) => a.at - b.at);
+      const withId = cands.filter(c => c.id);
+      const last = (withId.length ? withId : cands).pop();
+      noun = last.n; nounAt = last.at; if (last.id) extraId = last.id;
+    }
+    if (part) { noun = part; nounAt = sent.toLowerCase().lastIndexOf(part.toLowerCase()); }
+    if (noun && R5J_DIMNOUN.test(noun)) {
+      if (!dm) dm = noun.charAt(0).toUpperCase() + noun.slice(1).toLowerCase();
+      if (/^(höhe|breite|länge|tiefe|dicke|weite|stärke)$/i.test(noun)) dm = ({höhe:"Höhe",breite:"Breite",länge:"Länge",tiefe:"Tiefe",dicke:"Dicke",weite:"Weite",stärke:"Stärke"})[noun.toLowerCase()] || dm;
+      noun = "";
+      nounAt = -1;
+    }
+    const id = extraId || r5jIdNear(sent, noun, nounAt);
+    return { noun: noun ? noun.toLowerCase() : "", dm: dm || "", id: id || "" };
+  }
+  function r5jValueEnd(t, x) {
+    if (typeof x.idx !== "number") return null;
+    const sl = t.slice(x.idx);
+    const m = sl.match(new RegExp("^(?:" + CF_NUM + ")\\s*(?:" + CF_UNIT_SRC + ")", "i"));
+    if (m) return x.idx + m[0].length;
+    const c = sl.match(/^\d[\d.,]*\s*[^\s,;:]+/);
+    return c ? x.idx + c[0].length : null;
+  }
+  function r5jGapBetween(ans, a, b) {
+    const t = cfPreNum(String(ans || ""));
+    if (typeof a.idx !== "number" || typeof b.idx !== "number") return null;
+    const lo = a.idx <= b.idx ? a : b, hi = a.idx <= b.idx ? b : a;
+    const end = r5jValueEnd(t, lo);
+    if (end == null || end > hi.idx) return null;
+    return t.slice(end, hi.idx);
+  }
+  function r5jGapClean(gap) {
+    if (gap == null) return false;
+    if (/[.!?;]/.test(gap)) return false;
+    let g = " " + gap + " ";
+    g = g.replace(new RegExp("(?:^|[^a-zäöüß])(?:" + CF_UNIT_SRC + ")(?![a-zäöüß0-9])", "gi"), " ");
+    g = g.replace(/[\d.,]+/g, " ");
+    g = g.replace(/\b(und|and|plus|sowie)\b/gi, " ");
+    g = g.replace(/[+,;:()\/]/g, " ");
+    return !g.replace(/\s+/g, "").length;
+  }
+  function r5jGapsClean(ans, vals) {
+    if (!vals || vals.length < 2) return true;
+    const ordered = vals.slice().sort((a, b) => a.idx - b.idx);
+    for (let i = 0; i < ordered.length - 1; i++) {
+      if (!r5jGapClean(r5jGapBetween(ans, ordered[i], ordered[i + 1]))) return false;
+    }
+    return true;
+  }
+  function r5jUnitKey(ans, x) {
+    const lab = String(x.label || "");
+    const m = lab.match(/([A-Za-zÄÖÜäöüß%‰°€$µμ]+)\s*$/);
+    if (m) {
+      const d = cfUnitDef(m[1]);
+      if (d) return { fam: d[1], key: d[3] || d[1] };
+      return { fam: x.dim || "", key: m[1].toLowerCase() };
+    }
+    return { fam: x.dim || "", key: lab.toLowerCase() };
+  }
+  function r5jIsCompoundMixed(ans, vals) {
+    if (!vals || vals.length < 2) return false;
+    const keys = vals.map(x => r5jUnitKey(ans, x));
+    if (keys.some(k => !k.fam || !k.key)) return false;
+    if (new Set(keys.map(k => k.fam)).size !== 1) return false;
+    if (new Set(keys.map(k => k.key)).size < 2) return false;
+    return r5jGapsClean(ans, vals);
+  }
+  const R5J_TOTAL = /\b(zusammen|insgesamt|in\s+summe|total)\b/i;
+  function r5jHasTotalMark(ans, vals) {
+    const t = cfPreNum(String(ans || ""));
+    if (!vals || !vals.length) return R5J_TOTAL.test(t);
+    const ordered = vals.slice().sort((a, b) => a.idx - b.idx);
+    const head = t.slice(0, ordered[0].idx);
+    const sentStart = Math.max(0, head.lastIndexOf(".") + 1, head.lastIndexOf("!") + 1, head.lastIndexOf("?") + 1);
+    const lastEnd = r5jValueEnd(t, ordered[ordered.length - 1]);
+    if (lastEnd == null) return false;
+    const tail = t.slice(lastEnd);
+    const cut = tail.search(/[.!?]/);
+    const sentEnd = lastEnd + (cut < 0 ? tail.length : cut + 1);
+    return R5J_TOTAL.test(t.slice(sentStart, sentEnd));
+  }
+  function r5jSideSummable(ans, vals) {
+    if (!vals || vals.length < 2) return true;
+    const mixed = r5jIsCompoundMixed(ans, vals);
+    const mark = r5jHasTotalMark(ans, vals);
+    const gaps = r5jGapsClean(ans, vals);
+    if (mixed) return true;
+    if (mark && gaps) return true;
+    return false;
+  }
+  function r5jWhitelistEquiv(ansA, A, ansB, B) {
+    if (!A.length || !B.length) return false;
+    if (r5jBagsEqual(A, B)) return true;
+    if (!r5jSideSummable(ansA, A) || !r5jSideSummable(ansB, B)) return false;
+    return r5jBagEquivalent(A, B);
+  }
+  function r5jRefsCompatible(a, b) {
+    if (a.noun && b.noun && a.noun !== b.noun) return false;
+    if (a.dm && b.dm && a.dm !== b.dm) return false;
+    if (a.noun && b.noun && a.noun === b.noun) return true;
+    if (a.dm && b.dm && a.dm === b.dm) return true;
+    return false;
+  }
+  function r5jRefLabel(a, b) {
+    const noun = (a && a.noun) || (b && b.noun) || "";
+    const dm = (a && a.dm) || (b && b.dm) || "";
+    const parts = [];
+    if (noun) parts.push(noun);
+    if (dm && dm !== noun) parts.push(dm);
+    return parts.join(", ");
+  }
+  function r5jMid(x) { return (Number(x.lo) + Number(x.hi)) / 2; }
+  function r5jAlmost(a, b) {
+    if (!isFinite(a) || !isFinite(b)) return false;
+    return Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+  }
+  function r5jBagsEqual(A, B) {
+    if (A.length !== B.length) return false;
+    const a = A.map(r5jMid).sort((x, y) => x - y), b = B.map(r5jMid).sort((x, y) => x - y);
+    return a.every((v, i) => r5jAlmost(v, b[i]));
+  }
+  function r5jBagEquivalent(A, B) {
+    if (!A.length || !B.length) return false;
+    if (r5jBagsEqual(A, B)) return true;
+    const sA = A.reduce((s, x) => s + r5jMid(x), 0);
+    const sB = B.reduce((s, x) => s + r5jMid(x), 0);
+    if (r5jAlmost(sA, sB)) return true;
+    if (A.length > 1 && B.some(x => r5jAlmost(sA, r5jMid(x)))) return true;
+    if (B.length > 1 && A.some(x => r5jAlmost(sB, r5jMid(x)))) return true;
+    return false;
+  }
+  function r5jDistinctDms(list) { return [...new Set(list.map(g => g.r.dm).filter(Boolean))]; }
+  function r5jDimConflicts(ansA, A, ansB, B, dim) {
+    if (A.length < 2 && B.length < 2) return null; // Einzelfall: bestehende Logik (inkl. 5i-Hinweis)
+    if (r5jBagsEqual(A, B)) return [];
+    const gA = A.map(x => ({ x, r: r5jRefOf(ansA, x) }));
+    const gB = B.map(x => ({ x, r: r5jRefOf(ansB, x) }));
+    const hasRef = [...gA, ...gB].some(g => g.r.noun || g.r.dm);
+    if (!hasRef) {
+      if (r5jWhitelistEquiv(ansA, A, ansB, B)) return [];
+      return null;
+    }
+    const hard = [];
+    function report(aG, bG, key) {
+      const aVals = aG.map(g => g.x), bVals = bG.map(g => g.x);
+      if (!aVals.length || !bVals.length) return;
+      const mixedDm = r5jDistinctDms(aG).length > 1 || r5jDistinctDms(bG).length > 1;
+      if (!mixedDm && r5jWhitelistEquiv(ansA, aVals, ansB, bVals)) return;
+      if (r5jBagsEqual(aVals, bVals)) return;
+      hard.push({ dim, key, a: aVals.map(x => x.label).join(", "), b: bVals.map(x => x.label).join(", ") });
+    }
+    function softOrConflict(aG, bG, key, allowOverlap, allowSum) {
+      const aVals = aG.map(g => g.x), bVals = bG.map(g => g.x);
+      if (!aVals.length || !bVals.length) return;
+      const mixedDm = r5jDistinctDms(aG).length > 1 || r5jDistinctDms(bG).length > 1;
+      const sumOk = allowSum !== false && !mixedDm;
+      if (sumOk ? r5jWhitelistEquiv(ansA, aVals, ansB, bVals) : r5jBagsEqual(aVals, bVals)) return;
+      if (allowOverlap && aVals.some(x => bVals.some(y => cfOverlap(x, y)))) return;
+      hard.push({ dim, key, a: aVals.map(x => x.label).join(", "), b: bVals.map(x => x.label).join(", ") });
+    }
+
+    const dms = r5jDistinctDms([...gA, ...gB]);
+    for (const dm of dms) {
+      const a = gA.filter(g => g.r.dm === dm), b = gB.filter(g => g.r.dm === dm);
+      const aNouns = [...new Set(a.map(g => g.r.noun).filter(Boolean))];
+      const bNouns = [...new Set(b.map(g => g.r.noun).filter(Boolean))];
+      if (aNouns.length && bNouns.length) {
+        for (const n of aNouns) {
+          if (!bNouns.includes(n)) continue;
+          const aN = a.filter(g => g.r.noun === n), bN = b.filter(g => g.r.noun === n);
+          const ids = [...new Set([...aN, ...bN].map(g => g.r.id).filter(Boolean))];
+          if (ids.length) {
+            for (const id of ids) {
+              const aI = aN.filter(g => g.r.id === id), bI = bN.filter(g => g.r.id === id);
+              if (aI.length && bI.length) report(aI, bI, r5jRefLabel({ noun: n, dm }, { noun: n, dm }) + ", " + id);
+            }
+            const aU = aN.filter(g => !g.r.id), bU = bN.filter(g => !g.r.id);
+            if (aU.length && bU.length) report(aU, bU, r5jRefLabel({ noun: n, dm }, { noun: n, dm }));
+            else if ((aN.length && bN.length) && !(ids.some(id => aN.some(g => g.r.id === id) && bN.some(g => g.r.id === id))))
+              softOrConflict(aN, bN, r5jRefLabel({ noun: n, dm }, { noun: n, dm }), true, false);
+          } else report(aN, bN, r5jRefLabel({ noun: n, dm }, { noun: n, dm }));
+        }
+      } else if (aNouns.length && !bNouns.length) {
+        if (aNouns.length === 1) report(a, b, r5jRefLabel({ noun: aNouns[0], dm }, { noun: "", dm }));
+        else softOrConflict(a, b, dm, true);
+      } else if (!aNouns.length && bNouns.length) {
+        if (bNouns.length === 1) report(a, b, r5jRefLabel({ noun: "", dm }, { noun: bNouns[0], dm }));
+        else softOrConflict(a, b, dm, true);
+      } else {
+        report(a, b, dm);
+      }
+    }
+
+    const aN = gA.filter(g => !g.r.dm), bN = gB.filter(g => !g.r.dm);
+    const nounsA = [...new Set(aN.map(g => g.r.noun).filter(Boolean))];
+    const nounsB = [...new Set(bN.map(g => g.r.noun).filter(Boolean))];
+    const nouns = [...new Set([...gA, ...gB].map(g => g.r.noun).filter(Boolean))];
+    const pairedNouns = new Set();
+    for (const n of nounsA) {
+      if (!nounsB.includes(n)) continue;
+      pairedNouns.add(n);
+      const aNn = aN.filter(g => g.r.noun === n), bNn = bN.filter(g => g.r.noun === n);
+      const ids = [...new Set([...aNn, ...bNn].map(g => g.r.id).filter(Boolean))];
+      if (ids.length) {
+        for (const id of ids) {
+          const aI = aNn.filter(g => g.r.id === id), bI = bNn.filter(g => g.r.id === id);
+          if (aI.length && bI.length) softOrConflict(aI, bI, n + ", " + id, true, true);
+        }
+        const aU = aNn.filter(g => !g.r.id), bU = bNn.filter(g => !g.r.id);
+        if (aU.length && bU.length) softOrConflict(aU, bU, n, true);
+        else if (aNn.length && bNn.length && !ids.some(id => aNn.some(g => g.r.id === id) && bNn.some(g => g.r.id === id)))
+          softOrConflict(aNn, bNn, n, true, false);
+      } else softOrConflict(aNn, bNn, n, true);
+    }
+    // Eine Seite hat einen Gegenstand, die andere ist ohne Gegenstandswort: nur dann zusammenlegen, wenn nicht mehrere Gegenstände im Spiel sind.
+    if (nouns.length === 1) {
+      const n = nouns[0];
+      const aParts = aN.filter(g => !g.r.noun || g.r.noun === n);
+      const bParts = bN.filter(g => !g.r.noun || g.r.noun === n);
+      if (aParts.length && bParts.length && !pairedNouns.has(n))
+        softOrConflict(aParts, bParts, n, true);
+    }
+
+    // Rest: eine Seite nennt nur den Gegenstand ohne Maßwort, die andere hat Maßwörter (Höhe/Breite). Nicht über verschiedene Maße summieren.
+    for (const n of nouns) {
+      const aBare = aN.filter(g => g.r.noun === n);
+      const bBare = bN.filter(g => g.r.noun === n);
+      const aDm = gA.filter(g => g.r.noun === n && g.r.dm);
+      const bDm = gB.filter(g => g.r.noun === n && g.r.dm);
+      if (aBare.length && bDm.length && !bBare.length) {
+        const dmsB = r5jDistinctDms(bDm);
+        softOrConflict(aBare, bDm, n, dmsB.length > 1, dmsB.length <= 1);
+      }
+      if (bBare.length && aDm.length && !aBare.length) {
+        const dmsA = r5jDistinctDms(aDm);
+        softOrConflict(aDm, bBare, n, dmsA.length > 1, dmsA.length <= 1);
+      }
+    }
+    if (hard.length) return hard;
+    if (r5jWhitelistEquiv(ansA, A, ansB, B)) return [];
+    return null; // 5i-paarweise (auch bei verschiedenen Gegenstandswörtern und Zufallssummen)
+  }
+
+  // (5) T08: richtige Nachrechnung der Prämisse ist kein Spiegelungsindikator
+  function r5jPremiseArithOk(answer, mirroredObjs) {
+    if (!mirroredObjs || !mirroredObjs.length) return false;
+    const ok = cfArith5c(answer).checked.filter(r => r.ok);
+    if (!ok.length) return false;
+    return mirroredObjs.every(p => {
+      if (p.dim === "Abmessung" && p.key && /^\d+(\.\d+)?x\d+/.test(p.key)) {
+        const parts = p.key.split("x").map(Number), prod = parts[0] * parts[1];
+        return ok.some(r => Math.abs(r.computed - prod) <= 1e-9 * Math.max(1, Math.abs(prod)));
+      }
+      const mid = (Number(p.lo) + Number(p.hi)) / 2;
+      return ok.some(r => Math.abs(r.computed - mid) <= 1e-9 * Math.max(1, Math.abs(mid)) || Math.abs(r.stated - mid) <= 1e-9 * Math.max(1, Math.abs(mid)));
+    });
+  }
+
+  // (5) T10: klar zugeschriebenes Zitat ist keine Anweisung
+  function r5jAttributedQuote(text, hit) {
+    const t = String(text || ""), h = String(hit || "");
+    if (!t || !h) return false;
+    const idx = t.toLowerCase().indexOf(h.toLowerCase());
+    if (idx < 0) return false;
+    const pre = t.slice(Math.max(0, idx - 90), idx), post = t.slice(idx);
+    const open = /[„“”"«»]\s*[^„“”"«»]{0,4}$/.test(pre) || /[„“”"«»]/.test(pre.slice(-12));
+    const close = /[„“”"«»]/.test(post.slice(h.length, h.length + 24));
+    const tail = pre.replace(/[„“”"«»]\s*$/, "").trimEnd();
+    const said = /\b(sagte|sagt|gesagt|schrieb|schreibt|geschrieben|fragte|fragt|zitiert|zitierte|lautet|heisst|heißt|liest|said|wrote|asked|quoted|states|stated|according to)\b[\s,]{0,20}[:：]?\s*$/i.test(tail)
+      || /\b(liest man|man liest|man schreibt|schreibt man)\b[\s,]{0,20}[:：]?\s*$/i.test(tail)
+      || /\b(laut|gemäß)\b[\s\S]{0,40}[:：]?\s*$/i.test(tail)
+      || /\b(steht|stand|steht geschrieben)\s*[:：]?\s*$/i.test(tail)
+      || /\b(zitat|wortlaut)\s*[:：]?\s*$/i.test(tail)
+      || /\b(er|sie|jemand|man|der text|die nachricht|the text)\s+\w{0,12}\s*(sagte|schrieb|fragte|said|wrote|asked|liest)\b/i.test(pre);
+    return open && close && said;
+  }
+  function r5jFilterInjection(texts, hits) {
+    return (hits || []).filter(h => !(texts || []).some(t => t && r5jAttributedQuote(t, h)));
+  }
+
+  function r5jWordInDeniedClaim(text, word) {
+    const N = cfNormalize(text), src = String(text || ""), w = String(word || "");
+    if (!w || !src) return false;
+    const wr = new RegExp("(?:^|[^a-zäöüß])(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")(?![a-zäöüß])", "gi");
+    let mm, any = false;
+    while ((mm = wr.exec(src)) !== null) {
+      any = true;
+      const i = mm.index + mm[0].length - mm[1].length;
+      let ni = 0;
+      if (N.map && N.map.length) {
+        ni = N.map.length - 1;
+        for (let k = 0; k < N.map.length; k++) if (N.map[k] >= i) { ni = k; break; }
+      } else ni = i;
+      if (!r5iDeniedReport(N, ni)) return false;
+    }
+    return any;
+  }
+
   /* ================= Runde 4b (Review 2): Vor-Token-Kontext, Zeit, Hash-Kette, Vertrauensprotokoll, menschliche Freigabe ================= */
   const CTX_SLOTS = [
     { id: "system_instructions", de: "System-Anweisungen / System-Prompt", trick: "cap" },
@@ -2942,7 +3380,7 @@ const ENGINE = (function () {
       const cfSame = raw => { const cv = cfValues(raw); return cv.length > 0 && cv.every(c => cfAns.some(a => cfOverlap(a, c))); };
       const distorted = [...extractDims(rest).filter(d => !okDim(d)), ...extractNumUnits(rest).filter(n => !okNum(n))].map(x => x.raw).filter(r => !cfSame(r));
       const ansCert = new Set(countMatches(normLower(answer), CERTAINTY));
-      const extraCertainty = countMatches(normLower(rest), CERTAINTY).filter(w => !ansCert.has(w));
+      const extraCertainty = countMatches(normLower(rest), CERTAINTY).filter(w => !ansCert.has(w) && !r5jWordInDeniedClaim(rest, w));
       const polar = rest.trim() ? (polarityDeviation(rest, answer) || r5cVerbPolarity(rest, answer)) : null;
       if (polar) {
         l3.findings.push("Zitierverzerrung (Polarität): Die Behauptung bestätigt „" + polar.keyword +
@@ -4335,7 +4773,10 @@ const ENGINE = (function () {
       const lacks = V.filter(v => !v.valObjs.some(x => x.dim === d));
       for (let i = 0; i < has.length; i++) for (let j = i + 1; j < has.length; j++) {
         const A = has[i].valObjs.filter(x => x.dim === d), B = has[j].valObjs.filter(x => x.dim === d);
-        if (!A.some(a => B.some(b => cfOverlap(a, b)))) {
+        const grouped = r5jDimConflicts(has[i].answer, A, has[j].answer, B, d);
+        if (grouped && grouped.length) grouped.forEach(g => conflicts.push((g.key ? g.dim + " (" + g.key + ")" : g.dim) + ": " + has[i].id + " → " + g.a + " vs. " + has[j].id + " → " + g.b));
+        else if (grouped && !grouped.length) { /* Bezug aufgeteilt, kein harter Konflikt in einer Gruppe */ }
+        else if (!A.some(a => B.some(b => cfOverlap(a, b)))) {
           const line = d + ": " + has[i].id + " → " + A.map(x => x.label).join(", ") + " vs. " + has[j].id + " → " + B.map(x => x.label).join(", ");
           const rd = r5iRefDiff(has[i].answer, A, has[j].answer, B, d);
           if (rd) r5iRefSoft.push(line + " (Bezug: " + rd + ")"); else conflicts.push(line);
@@ -4420,6 +4861,8 @@ const ENGINE = (function () {
           (v.affirm ? " und bestätigt ihn" : "") + ", während Varianten ohne diese Vorgabe etwas anderes nennen. Der Wert entspricht der Vorgabe, nicht einem Messwert. Eine Beeinflussung durch die Vorgabe ist möglich; ein ursächlicher Zusammenhang ist mit diesen Daten nicht nachweisbar." });
       } else if (agree.length && agree.length === v.mirroredObjs.length) {
         results.findings.push({ level: "HINWEIS", text: "Variante " + v.id + ": nennt den Vorgabe-Wert " + agree.map(x => x.label).join(", ") + ", aber auch Varianten ohne diese Vorgabe nennen ihn – kein Spiegeln erkennbar." });
+      } else if (r5jPremiseArithOk(v.answer, v.mirroredObjs)) {
+        results.findings.push({ level: "HINWEIS", text: "Variante " + v.id + ": nennt den Vorgabe-Wert " + v.mirrored.join(", ") + " und rechnet ihn korrekt nach. Das ist kein Spiegelungsurteil." });
       } else {
         results.statuses.add("SYCOPHANCY_INDICATOR");
         results.findings.push({ level: "SYCOPHANCY_INDICATOR", text: "Variante " + v.id + ": übernimmt Vorgabe-Wert(e) " + v.mirrored.join(", ") +
@@ -4499,7 +4942,7 @@ const ENGINE = (function () {
     return null;
   }
   function cfArithFmt(v) { return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 4 }).format(v); }
-  function cfArith(text) { return r5iSplitArith(text).checked; }
+  function cfArith(text) { return r5jSplitArith(text).checked; }
   function cfArithBase(text) {
     const src = String(text || "").normalize("NFKC").replace(/[\u2212\u2013\u2014]/g, "-");
     const out = [];
@@ -4564,7 +5007,7 @@ const ENGINE = (function () {
     for (const r of cfArith2(text).checked) if (!have.has(r.nums.join("|")) && !have.has(sig(r.expr))) out.push(r);
     return out;
   }
-  function cfArithUnchecked(text) { return r5iSplitArith(text).unchecked; }
+  function cfArithUnchecked(text) { return r5jSplitArith(text).unchecked; }
 
   return { techVerify, cipAnalyze, mathChecks, provenance, counterfactual, r5eInternalNumbers, r5eAgreement, r5eSources,
     parseManifest, verifyManifest, collectOutputValues, extractDims, extractNumUnits,
@@ -4858,7 +5301,20 @@ function u7Confirm(dirty){ return !dirty || confirm("Eigene Eingaben überschrei
     markAuditStale();
   });
 });
-function renderAudit(rep){ renderAuditBase(rep); r5eRender(rep); }
+function renderAudit(rep){ renderAuditBase(rep); r5eRender(rep); r5jFriendlyNote(rep); }
+function r5jFriendlyNote(rep){
+  const inj = rep.tech && rep.tech.E && rep.tech.E.status === "INJECTION_TRACE";
+  const tricks = (rep.l1 && rep.l1.tricks) || [];
+  const jail = tricks.some(h => h.signal === "OVERRIDE" || h.family === "OVERRIDE");
+  if (!inj && !jail) return;
+  const box = document.getElementById("auditResult");
+  if (!box || box.querySelector(".r5j-netter")) return;
+  const d = document.createElement("div");
+  d.className = "hint r5j-netter";
+  d.setAttribute("role", "note");
+  d.textContent = "Netter Versuch: Ein Satz, der wie eine Anweisung an die Prüfung klingt, wird nur als Text gelesen und nicht ausgeführt. Dieser Hinweis ändert den Befund nicht.";
+  box.appendChild(d);
+}
 function r5eEl(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function r5eRender(rep){
   const nb = document.getElementById("r5eNotes");
